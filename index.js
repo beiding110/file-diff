@@ -20,6 +20,9 @@ class BidComparator {
             this.textComparator = new TextComparator([]);
         }
 
+        // 进度
+        this.textComparator.progressHandler = this.textCompareProgressHandler;
+
         const bidDocs = await Promise.all(bidFiles.map(parsePDF));
 
         // 两两对比投标文件
@@ -34,18 +37,11 @@ class BidComparator {
     }
 
     extractBiddingPatterns(biddingDoc) {
-        return biddingDoc.pages.flatMap((page) => page.text.split('\n')).filter((line) => line.trim().length > 0);
+        return biddingDoc.pages.flatMap((page) => page.text).filter((line) => line.trim().length > 0);
     }
 
     async compareBids(bidA, bidB) {
-        this.textComparator.progressHandler = (num) => {
-            console.log(num);
-        };
-
-        const textSimilarities = this.textComparator.findSimilarities(
-            bidA.pages.flatMap((p) => p.text).join('\n'),
-            bidB.pages.flatMap((p) => p.text).join('\n')
-        );
+        const textSimilarities = this.textComparator.findSimilarities(bidA.pages, bidB.pages);
 
         // const imageMatches = await this.compareImages(bidA, bidB);
 
@@ -102,14 +98,12 @@ class BidComparator {
 
             let i = {
                 label,
-                a: '',
-                b: '',
+                a: metaA[key],
+                b: metaB[key],
                 same: false,
             };
 
             if (metaA[key] === metaB[key]) {
-                i.a = metaA[key];
-                i.b = metaB[key];
                 i.same = true;
             }
 
@@ -121,6 +115,10 @@ class BidComparator {
 }
 
 let comparator = new BidComparator();
+
+comparator.textCompareProgressHandler = function (num, str) {
+    console.log(num, str);
+};
 
 comparator.processFiles(['./docs/g2-1.pdf', './docs/g2-2.pdf']).then((res) => {
     console.log(res);

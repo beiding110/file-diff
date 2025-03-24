@@ -11,11 +11,15 @@ async function parsePDF(filePath) {
         const textContent = await page.getTextContent();
         const viewport = page.getViewport({ scale: 1.0 });
 
-        pages.push({
-            pageNumber: i,
-            text: textContent.items.map((item) => item.str).join('\n'),
-            viewport,
-            // images: await extractImages(page),
+        const fontGroups = groupDifferentFonts(textContent);
+
+        fontGroups.forEach(font => {
+            pages.push({
+                pageNumber: i,
+                text: font.map((item) => item.str).join(''), // 这里之前使用的 /n 改为了空字符串，后续看看是否需要改为' '
+                viewport,
+                // images: await extractImages(page),
+            });
         });
     }
 
@@ -24,6 +28,41 @@ async function parsePDF(filePath) {
         pages,
         filePath,
     };
+}
+
+// 按字体、字号对内容进行分组
+function groupDifferentFonts(textContent) {
+    const textInDifferentFonts = [];
+    let lastText = null;
+
+    textContent.items.forEach(text => {
+        if (!text.height || !text.str) {
+            // 空的
+            return;
+        }
+
+        if (!lastText) {
+            // 首个
+            textInDifferentFonts.push([text]);
+
+            lastText = text;
+
+            return;
+        }
+
+        if (
+            textContent.styles[lastText.fontName].textContent === textContent.styles[text.fontName].textContent // 字体相同
+            && lastText.height === text.height // 字号相同
+        ) {
+            textInDifferentFonts[textInDifferentFonts.length - 1].push(text);
+        } else {
+            textInDifferentFonts.push([text]);
+        }
+
+        lastText = text;
+    });
+
+    return textInDifferentFonts;
 }
 
 async function extractImages(page) {

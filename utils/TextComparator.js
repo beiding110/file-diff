@@ -6,7 +6,6 @@ class TextComparator {
 
         this.options = {
             threshold: 0.7,
-            maxLength: 100,
             minLength: 10,
             ...options,
         };
@@ -19,24 +18,37 @@ class TextComparator {
         return text.replace(/\s+/g, ' ').trim();
     }
 
-    findSimilarities(textA, textB) {
-        const cleanA = this.removeBiddingContent(textA);
-        const cleanB = this.removeBiddingContent(textB);
+    findSimilarities(pagesA, pagesB) {
+        const cleanA = this.removeBiddingContent(pagesA);
+        const cleanB = this.removeBiddingContent(pagesB);
 
         return this.compareTexts(cleanA, cleanB);
     }
 
-    removeBiddingContent(text) {
-        // 使用LCS算法移除招标文件内容
-        return this.biddingContent.reduce((acc, biddingText) => {
-            const diff = Diff.diffChars(acc, biddingText);
-            return diff
-                .filter((part) => !part.added && !part.removed)
-                .map((part) => part.value)
-                .join('');
-        }, text);
+    removeBiddingContent(pages) {
+        if (!this.biddingContent || !this.biddingContent.length) {
+            return pages;
+        }
+
+        return pages.reduce((acc, page) => {
+            if (
+                !this.biddingContent.some((biddingPage) => {
+                    const diff = Diff.diffChars(page.text, biddingPage.text);
+
+                    return diff
+                        .filter((part) => !part.added && !part.removed)
+                        .map((part) => part.value)
+                        .join('');
+                })
+            ) {
+                acc.push();
+            }
+
+            return acc;
+        }, []);
     }
 
+    // 按句子拆分文本
     splitSentences(text) {
         // 支持中文/英文/日文分句
         const sentenceRegex = /[^.!?。！？]+([.!?。！？]|$)/g;
@@ -44,41 +56,74 @@ class TextComparator {
         return text.match(sentenceRegex) || [];
     }
 
-    preprocess(text) {
+    preprocess(page) {
         // 统一全角字符为半角
-        const normalized = text
+        const normalized = page.text
             .normalize('NFKC')
             .replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
             .replace(/\s+/g, ' ')
             .trim();
 
-        return this.splitSentences(normalized)
+        // 将断句进一步拆分
+        const sentences = this.splitSentences(normalized)
             .map((s) => s.replace(/^\s+|\s+$/g, ''))
             .filter((s) => s.length > 0);
+
+        return sentences.map((s) => {
+            return {
+                ...page,
+                text: s,
+            };
+        });
     }
 
-    compareTexts(textA, textB) {
-        const sentencesA = this.preprocess(textA).filter((sentence) => {
-            return sentence.length >= this.options.minLength;
-        });
-        const sentencesB = this.preprocess(textB).filter((sentence) => {
-            return sentence.length >= this.options.minLength;
-        });
+    compareTexts(pagesA, pagesB) {
+        const pagesSentencesA = pagesA
+            .reduce((arr, page) => {
+                let sentences = this.preprocess(page);
+
+                arr = [...arr, ...sentences];
+
+                return arr;
+            }, [])
+            .filter((page) => {
+                return page.text.length >= this.options.minLength;
+            });
+
+        const pagesSentencesB = pagesB
+            .reduce((arr, page) => {
+                let sentences = this.preprocess(page);
+
+                arr = [...arr, ...sentences];
+
+                return arr;
+            }, [])
+            .filter((page) => {
+                return page.text.length >= this.options.minLength;
+            });
 
         const similarityMap = [];
 
-        let progress = this.factoryProgress(sentencesA.length * sentencesB.length);
+        let progress = this.factoryProgress(pagesSentencesA.length * pagesSentencesB.length);
 
-        sentencesA.forEach((sa) => {
-            sentencesB.forEach((sb) => {
-                const { a, b, similarity } = this.calculateSentenceSimilarity(sa, sb);
+        pagesSentencesA.forEach((pa) => {
+            pagesSentencesB.forEach((pb) => {
+                const { a, b, similarity } = this.calculateSentenceSimilarity(pa.text, pb.text);
 
                 if (similarity >= this.options.threshold) {
                     similarityMap.push({
-                        sentenceA: sa,
-                        sentencesB: sb,
-                        sentenceAB: a,
-                        sentencesBB: b,
+                        a: {
+                            text: pa.text,
+                            textB: a,
+                            pageNumber: pa.pageNumber,
+                            // viewport: pa.viewport,
+                        },
+                        b: {
+                            text: pb.text,
+                            textB: b,
+                            pageNumber: pb.pageNumber,
+                            // viewport: pb.viewport,
+                        },
                     });
                 }
 
@@ -130,12 +175,20 @@ class TextComparator {
     factoryProgress(total) {
         let current = 0;
 
+        let lastTime = 0;
+
         return () => {
             current++;
 
             let percentage = (current / total).toFixed(4);
 
-            this.progressHandler && this.progressHandler(percentage);
+            let now = Date.now();
+
+            if (now - lastTime >= 1000) {
+                lastTime = now;
+                
+                this.progressHandler && this.progressHandler(percentage, `${current} / ${total}`);
+            }
         };
     }
 }
