@@ -1,0 +1,6 @@
+{
+    "dependencies": {
+        "diff": "^7.0.0",
+        "pdfjs-dist": "^5.0.375"
+    }
+}
