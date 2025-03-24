@@ -3,12 +3,16 @@ const Diff = require('diff');
 class TextComparator {
     constructor(biddingContent, options = {}) {
         this.biddingContent = biddingContent;
+
         this.options = {
-            chunkSize: 200,
             threshold: 0.7,
-            minLength: 20,
+            maxLength: 100,
+            minLength: 10,
             ...options,
         };
+
+        // 对比进度
+        this.progressHandler = null;
     }
 
     preprocess(text) {
@@ -36,6 +40,7 @@ class TextComparator {
     splitSentences(text) {
         // 支持中文/英文/日文分句
         const sentenceRegex = /[^.!?。！？]+([.!?。！？]|$)/g;
+
         return text.match(sentenceRegex) || [];
     }
 
@@ -53,76 +58,35 @@ class TextComparator {
     }
 
     compareTexts(textA, textB) {
-        const sentencesA = this.preprocess(textA);
-        const sentencesB = this.preprocess(textB);
+        const sentencesA = this.preprocess(textA).filter((sentence) => {
+            return sentence.length >= this.options.minLength;
+        });
+        const sentencesB = this.preprocess(textB).filter((sentence) => {
+            return sentence.length >= this.options.minLength;
+        });
 
-        const similarityMap = new Map();
+        const similarityMap = [];
 
-        // 构建倒排索引
-        const invertedIndex = new Map();
+        let progress = this.factoryProgress(sentencesA.length * sentencesB.length);
 
-        sentencesA
-            .filter((sentence) => {
-                return sentence.length >= this.options.minLength;
-            })
-            .forEach((sentence, index) => {
-                const key = this.getSentenceKey(sentence);
+        sentencesA.forEach((sa) => {
+            sentencesB.forEach((sb) => {
+                const { a, b, similarity } = this.calculateSentenceSimilarity(sa, sb);
 
-                if (!invertedIndex.has(key)) {
-                    invertedIndex.set(key, []);
+                if (similarity >= this.options.threshold) {
+                    similarityMap.push({
+                        sentenceA: sa,
+                        sentencesB: sb,
+                        sentenceAB: a,
+                        sentencesBB: b,
+                    });
                 }
 
-                invertedIndex.get(key).push({
-                    source: 'A',
-                    index,
-                    sentence,
-                });
-            });
-
-        sentencesB
-            .filter((sentence) => {
-                return sentence.length >= this.options.minLength;
-            })
-            .forEach((sentence, index) => {
-                const key = this.getSentenceKey(sentence);
-
-                if (!invertedIndex.has(key)) {
-                    invertedIndex.set(key, []);
-                }
-
-                invertedIndex.get(key).push({
-                    source: 'B',
-                    index,
-                    sentence,
-                });
-            });
-
-        // 查找相似句子对
-        invertedIndex.forEach((candidates) => {
-            if (candidates.length < 2) return;
-
-            const groupA = candidates.filter((c) => c.source === 'A');
-            const groupB = candidates.filter((c) => c.source === 'B');
-
-            groupA.forEach((a) => {
-                groupB.forEach((b) => {
-                    const similarity = this.calculateSentenceSimilarity(a.sentence, b.sentence);
-
-                    if (similarity >= this.options.threshold) {
-                        const key = `${a.index}-${b.index}`;
-                        similarityMap.set(key, {
-                            sentenceA: a.sentence,
-                            sentenceB: b.sentence,
-                            indexA: a.index,
-                            indexB: b.index,
-                            similarity,
-                        });
-                    }
-                });
+                progress();
             });
         });
 
-        return Array.from(similarityMap.values());
+        return similarityMap;
     }
 
     getSentenceKey(sentence) {
@@ -133,15 +97,46 @@ class TextComparator {
 
     calculateSentenceSimilarity(a, b) {
         const diff = Diff.diffWords(a, b);
+
         let sameCount = 0;
 
+        let strA = '',
+            strB = '';
+
         diff.forEach((part) => {
-            if (!part.added && !part.removed) {
+            if (part.removed) {
+                // 被移除的，属于左边
+                strA += part.value;
+            } else if (part.added) {
+                // 新增的，属于右边
+                strB += part.value;
+            } else {
+                // 两边相同的部分
                 sameCount += part.value.length;
+
+                strA += `<b>${part.value}</b>`;
+                strB += `<b>${part.value}</b>`;
             }
         });
 
-        return sameCount / Math.max(a.length, b.length);
+        return {
+            a: strA.replaceAll('</b><b>', ''),
+            b: strB.replaceAll('</b><b>', ''),
+            similarity: sameCount / Math.max(a.length, b.length),
+        };
+    }
+
+    // 调用进度条
+    factoryProgress(total) {
+        let current = 0;
+
+        return () => {
+            current++;
+
+            let percentage = (current / total).toFixed(4);
+
+            this.progressHandler && this.progressHandler(percentage);
+        };
     }
 }
 

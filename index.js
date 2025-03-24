@@ -38,6 +38,10 @@ class BidComparator {
     }
 
     async compareBids(bidA, bidB) {
+        this.textComparator.progressHandler = (num) => {
+            console.log(num);
+        };
+
         const textSimilarities = this.textComparator.findSimilarities(
             bidA.pages.flatMap((p) => p.text).join('\n'),
             bidB.pages.flatMap((p) => p.text).join('\n')
@@ -118,6 +122,8 @@ class BidComparator {
 
 let comparator = new BidComparator();
 
-comparator.processFiles(['./docs/bid3.pdf', './docs/bid4.pdf']).then((res) => {
+comparator.processFiles(['./docs/g2-1.pdf', './docs/g2-2.pdf']).then((res) => {
     console.log(res);
+
+    fs.writeFileSync('./docs/result.json', JSON.stringify(res));
 });
