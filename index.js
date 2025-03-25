@@ -3,6 +3,7 @@ import path from 'path';
 
 import parsePDF from './utils/parsePDF.js';
 import TextComparator from './utils/TextComparator.js';
+import ImageComparator from './utils/ImageComparator.js';
 
 class BidComparator {
     constructor() {
@@ -22,6 +23,7 @@ class BidComparator {
 
         // 进度
         this.textComparator.progressHandler = this.textCompareProgressHandler;
+        ImageComparator.processHandler = this.imageCompareProgressHandler;
 
         const bidDocs = await Promise.all(bidFiles.map(parsePDF));
 
@@ -41,9 +43,9 @@ class BidComparator {
     }
 
     async compareBids(bidA, bidB) {
-        const textSimilarities = this.textComparator.findSimilarities(bidA.pages, bidB.pages);
+        const textSimilarities = this.textComparator.findSimilarities(bidA.texts, bidB.texts);
 
-        // const imageMatches = await this.compareImages(bidA, bidB);
+        // const imageMatches = await ImageComparator.compareImages(bidA.images, bidB.images);
 
         return {
             files: [bidA.filePath, bidB.filePath],
@@ -51,28 +53,6 @@ class BidComparator {
             // imageMatches,
             metadataMatches: this.compareMetadata(bidA.metadata, bidB.metadata),
         };
-    }
-
-    async compareImages(bidA, bidB) {
-        const matches = [];
-
-        for (const imgA of bidA.pages.flatMap((p) => p.images)) {
-            for (const imgB of bidB.pages.flatMap((p) => p.images)) {
-                const similarity = ImageComparator.compareHashes(
-                    await ImageComparator.getImageHash(imgA.data),
-                    await ImageComparator.getImageHash(imgB.data)
-                );
-
-                if (similarity > 0.9) {
-                    matches.push({
-                        pages: [imgA.pageNumber, imgB.pageNumber],
-                        similarity,
-                    });
-                }
-            }
-        }
-
-        return matches;
     }
 
     compareMetadata(metaA, metaB) {
@@ -117,6 +97,10 @@ class BidComparator {
 let comparator = new BidComparator();
 
 comparator.textCompareProgressHandler = function (num, str) {
+    console.log(num, str);
+};
+
+comparator.imageCompareProgressHandler = function (num, str) {
     console.log(num, str);
 };
 

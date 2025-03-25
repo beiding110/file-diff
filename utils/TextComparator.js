@@ -1,4 +1,5 @@
 const Diff = require('diff');
+const factoryProgress = require('./factoryProgress.js');
 
 class TextComparator {
     constructor(biddingContent, options = {}) {
@@ -18,22 +19,22 @@ class TextComparator {
         return text.replace(/\s+/g, ' ').trim();
     }
 
-    findSimilarities(pagesA, pagesB) {
-        const cleanA = this.removeBiddingContent(pagesA);
-        const cleanB = this.removeBiddingContent(pagesB);
+    findSimilarities(textsA, textsB) {
+        const cleanA = this.removeBiddingContent(textsA);
+        const cleanB = this.removeBiddingContent(textsB);
 
         return this.compareTexts(cleanA, cleanB);
     }
 
-    removeBiddingContent(pages) {
+    removeBiddingContent(texts) {
         if (!this.biddingContent || !this.biddingContent.length) {
-            return pages;
+            return texts;
         }
 
-        return pages.reduce((acc, page) => {
+        return texts.reduce((acc, textItem) => {
             if (
                 !this.biddingContent.some((biddingPage) => {
-                    const diff = Diff.diffChars(page.text, biddingPage.text);
+                    const diff = Diff.diffChars(textItem.text, biddingPage.text);
 
                     return diff
                         .filter((part) => !part.added && !part.removed)
@@ -51,7 +52,7 @@ class TextComparator {
     // 按句子拆分文本
     splitSentences(text) {
         // 支持中文/英文/日文分句
-        const sentenceRegex = /[^.!?。！？]+([.!?。！？]|$)/g;
+        const sentenceRegex = /([^\n.!?。！？\u203C\u203D\u2047-\u2049]+([.!?。！？\u203C\u203D\u2047-\u2049]|$))/gmu;
 
         return text.match(sentenceRegex) || [];
     }
@@ -77,37 +78,37 @@ class TextComparator {
         });
     }
 
-    compareTexts(pagesA, pagesB) {
-        const pagesSentencesA = pagesA
-            .reduce((arr, page) => {
-                let sentences = this.preprocess(page);
+    compareTexts(textsA, textsB) {
+        const sentencesA = textsA
+            .reduce((arr, textItem) => {
+                let sentences = this.preprocess(textItem);
 
                 arr = [...arr, ...sentences];
 
                 return arr;
             }, [])
-            .filter((page) => {
-                return page.text.length >= this.options.minLength;
+            .filter((textItem) => {
+                return textItem.text.length >= this.options.minLength;
             });
 
-        const pagesSentencesB = pagesB
-            .reduce((arr, page) => {
-                let sentences = this.preprocess(page);
+        const sentencesB = textsB
+            .reduce((arr, textItem) => {
+                let sentences = this.preprocess(textItem);
 
                 arr = [...arr, ...sentences];
 
                 return arr;
             }, [])
-            .filter((page) => {
-                return page.text.length >= this.options.minLength;
+            .filter((textItem) => {
+                return textItem.text.length >= this.options.minLength;
             });
 
         const similarityMap = [];
 
-        let progress = this.factoryProgress(pagesSentencesA.length * pagesSentencesB.length);
+        let progress = factoryProgress(sentencesA.length * sentencesB.length, this.progressHandler);
 
-        pagesSentencesA.forEach((pa) => {
-            pagesSentencesB.forEach((pb) => {
+        sentencesA.forEach((pa) => {
+            sentencesB.forEach((pb) => {
                 const { a, b, similarity } = this.calculateSentenceSimilarity(pa.text, pb.text);
 
                 if (similarity >= this.options.threshold) {
@@ -168,27 +169,6 @@ class TextComparator {
             a: strA.replaceAll('</b><b>', ''),
             b: strB.replaceAll('</b><b>', ''),
             similarity: sameCount / Math.max(a.length, b.length),
-        };
-    }
-
-    // 调用进度条
-    factoryProgress(total) {
-        let current = 0;
-
-        let lastTime = 0;
-
-        return () => {
-            current++;
-
-            let percentage = (current / total).toFixed(4);
-
-            let now = Date.now();
-
-            if (now - lastTime >= 1000) {
-                lastTime = now;
-                
-                this.progressHandler && this.progressHandler(percentage, `${current} / ${total}`);
-            }
         };
     }
 }

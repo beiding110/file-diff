@@ -4,28 +4,41 @@ async function parsePDF(filePath) {
     const pdf = await pdfjsLib.getDocument(filePath).promise;
     const metadata = await pdf.getMetadata();
 
-    const pages = [];
+    const texts = [];
+    const images = [];
 
     for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
         const viewport = page.getViewport({ scale: 1.0 });
 
+        // 按字体划分后的句组
+        const textContent = await page.getTextContent();
         const fontGroups = groupDifferentFonts(textContent);
 
-        fontGroups.forEach(font => {
-            pages.push({
+        fontGroups.forEach((font) => {
+            texts.push({
                 pageNumber: i,
                 text: font.map((item) => item.str).join(''), // 这里之前使用的 /n 改为了空字符串，后续看看是否需要改为' '
                 viewport,
-                // images: await extractImages(page),
+            });
+        });
+
+        // 本页中的图片
+        const imgs = await extractImages(page);
+
+        imgs.forEach((img) => {
+            images.push({
+                pageNumber: i,
+                image: img,
+                viewport,
             });
         });
     }
 
     return {
         metadata: metadata.info,
-        pages,
+        texts,
+        images,
         filePath,
     };
 }
@@ -35,7 +48,7 @@ function groupDifferentFonts(textContent) {
     const textInDifferentFonts = [];
     let lastText = null;
 
-    textContent.items.forEach(text => {
+    textContent.items.forEach((text) => {
         if (!text.height || !text.str) {
             // 空的
             return;
@@ -51,8 +64,8 @@ function groupDifferentFonts(textContent) {
         }
 
         if (
-            textContent.styles[lastText.fontName].textContent === textContent.styles[text.fontName].textContent // 字体相同
-            && lastText.height === text.height // 字号相同
+            textContent.styles[lastText.fontName].textContent === textContent.styles[text.fontName].textContent && // 字体相同
+            lastText.height === text.height // 字号相同
         ) {
             textInDifferentFonts[textInDifferentFonts.length - 1].push(text);
         } else {
@@ -66,30 +79,26 @@ function groupDifferentFonts(textContent) {
 }
 
 async function extractImages(page) {
-    const images = [];
     const ops = await page.getOperatorList();
 
-    // todo: 没这个pageResources
-    const pageResources = page.pageResources;
+    // 提取图片
+    const imgs = ops.fnArray.reduce((acc, curr, i) => {
+        if ([pdfjsLib.OPS.paintImageXObject, pdfjsLib.OPS.paintJpegXObject].includes(curr)) {
+            let imgIndex = ops.argsArray[i][0];
 
-    for (let i = 0; i < ops.fnArray.length; i++) {
-        if (ops.fnArray[i] === pdfjsLib.OPS.paintImageXObject) {
-            const imageName = ops.argsArray[i][0];
-            const xobj = await pageResources.getXObject(imageName);
+            page.objs.get(imgIndex, (imgRef) => {
+                const bytes = imgRef.data;
 
-            if (xobj instanceof pdfjsLib.Image) {
-                const imgData = await xobj.getImageData();
-                images.push({
-                    width: imgData.width,
-                    height: imgData.height,
-                    data: imgData.data,
-                    pageNumber: page.pageNumber,
-                });
-            }
+                const buffer = Buffer.from(bytes);
+
+                acc.push(buffer);
+            });
         }
-    }
 
-    return images;
+        return acc;
+    }, []);
+
+    return imgs;
 }
 
 module.exports = parsePDF;
