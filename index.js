@@ -45,12 +45,12 @@ class BidComparator {
     async compareBids(bidA, bidB) {
         const textSimilarities = this.textComparator.findSimilarities(bidA.texts, bidB.texts);
 
-        // const imageMatches = await ImageComparator.compareImages(bidA.images, bidB.images);
+        const imageMatches = await ImageComparator.compareImages(bidA.images, bidB.images);
 
         return {
             files: [bidA.filePath, bidB.filePath],
             textSimilarities,
-            // imageMatches,
+            imageMatches,
             metadataMatches: this.compareMetadata(bidA.metadata, bidB.metadata),
         };
     }

@@ -1,3 +1,7 @@
+const fs = require('fs');
+const path = require('path');
+const { PNG } = require('pngjs');
+
 async function parsePDF(filePath) {
     const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
@@ -79,26 +83,79 @@ function groupDifferentFonts(textContent) {
 }
 
 async function extractImages(page) {
-    const ops = await page.getOperatorList();
+    const ops = await page.getOperatorList(),
+        { fnArray, argsArray } = ops;
 
     // 提取图片
-    const imgs = ops.fnArray.reduce((acc, curr, i) => {
-        if ([pdfjsLib.OPS.paintImageXObject, pdfjsLib.OPS.paintJpegXObject].includes(curr)) {
-            let imgIndex = ops.argsArray[i][0];
+    let imgs = [];
 
-            page.objs.get(imgIndex, (imgRef) => {
+    for (let i = 0; i < fnArray.length; i++) {
+        let curr = fnArray[i];
+
+        if ([pdfjsLib.OPS.paintImageXObject, pdfjsLib.OPS.paintJpegXObject].includes(curr)) {
+            let imgIndex = argsArray[i][0];
+
+            page.objs.get(imgIndex, async (imgRef) => {
                 const bytes = imgRef.data;
 
-                const buffer = Buffer.from(bytes);
+                await saveImages(imgRef);
 
-                acc.push(buffer);
+                imgs.push(bytes);
             });
         }
-
-        return acc;
-    }, []);
+    }
 
     return imgs;
+}
+
+async function saveImages(imgRef) {
+    return new Promise((resolve, reject) => {
+        const { width, height, data } = imgRef;
+
+        let newfile = new PNG({ width, height });
+
+        let array;
+
+        switch (data.length) {
+            case width * height * 3: {
+                array = new Uint8ClampedArray(width * height * 4);
+
+                for (let index = 0; index < array.length; index++) {
+                    // Set alpha channel to full
+                    if (index % 4 === 3) {
+                        array[index] = 255;
+                    }
+                    // Copy RGB channel components from the original array
+                    else {
+                        array[index] = data[~~(index / 4) * 3 + (index % 4)];
+                    }
+                }
+
+                break;
+            }
+            case width * height * 4: {
+                array = data;
+                break;
+            }
+            default: {
+                console.error('Unknown imgData format!');
+            }
+        }
+
+        newfile.data = array;
+
+        const fileSavePath = path.join(__dirname, `../img/${new Date().getTime()}.png`);
+
+        const pipe = newfile.pack().pipe(fs.createWriteStream(fileSavePath));
+
+        pipe.on('finish', () => {
+            resolve();
+        });
+
+        pipe.on('error', () => {
+            reject();
+        });
+    });
 }
 
 module.exports = parsePDF;
