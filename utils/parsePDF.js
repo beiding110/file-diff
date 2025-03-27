@@ -1,8 +1,13 @@
 const fs = require('fs');
 const path = require('path');
 const { PNG } = require('pngjs');
+const CacheFile = require('./CacheFile.js');
 
 async function parsePDF(filePath) {
+    var cacheFile = new CacheFile();
+
+    await cacheFile.saveFile(filePath);
+
     const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
     const pdf = await pdfjsLib.getDocument(filePath).promise;
