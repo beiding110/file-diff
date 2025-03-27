@@ -3,10 +3,11 @@ const fs = require('fs');
 const path = require('path');
 const { PNG } = require('pngjs');
 
-const DIR_PATH = './cache';
+const DIR_PATH = path.join(__dirname, '../cache');
 const FOLDER_PATH = './files';
 const PDF_FILE_NAME = './main.pdf';
 const IMAGES_PATH = './images';
+const META_FILE_NAME = './meta.json';
 
 class CacheFile {
     constructor() {
@@ -189,6 +190,20 @@ class CacheFile {
                 reject(e);
             });
         });
+    }
+
+    async saveMetaInfo(json) {
+        if (!this.hash) {
+            await this.hashFileAsync(fromFileUrl);
+        }
+
+        const { path: fileFolderPath } = this.checkFilePath();
+
+        const targetPath = path.join(fileFolderPath, META_FILE_NAME);
+
+        fs.writeFileSync(targetPath, JSON.stringify(json));
+
+        return targetPath;
     }
 }
 

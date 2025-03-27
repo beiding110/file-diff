@@ -3,6 +3,7 @@ const CacheFile = require('./CacheFile.js');
 async function parsePDF(filePath) {
     var cacheFile = new CacheFile();
 
+    // 缓存pdf文档
     const pdfPath = await cacheFile.savePdf(filePath);
 
     const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
@@ -35,6 +36,7 @@ async function parsePDF(filePath) {
         for (let i = 0; i < imgs.length; i++) {
             let { data, width, height, name } = imgs[i];
 
+            // 缓存图片
             let imgPath = await cacheFile.saveImage({ data, width, height, name });
 
             images.push({
@@ -46,6 +48,9 @@ async function parsePDF(filePath) {
             });
         }
     }
+
+    // 缓存文件信息
+    await cacheFile.saveMetaInfo(metadata.info);
 
     return {
         metadata: metadata.info,
