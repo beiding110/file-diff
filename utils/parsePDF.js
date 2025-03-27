@@ -20,7 +20,7 @@ async function parsePDF(filePath) {
     const texts = [];
     const images = [];
 
-    for (let i = 1; i <= pdf.numPages; i++) {
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
         const page = await pdf.getPage(i);
         const viewport = page.getViewport({ scale: 1.0 });
 
@@ -30,7 +30,7 @@ async function parsePDF(filePath) {
 
         fontGroups.forEach((font) => {
             texts.push({
-                pageNumber: i,
+                pageNumber,
                 text: font.map((item) => item.str).join(''), // 这里之前使用的 /n 改为了空字符串，后续看看是否需要改为' '
                 viewport,
             });
@@ -46,7 +46,7 @@ async function parsePDF(filePath) {
             let imgPath = await cacheFile.saveImage({ data, width, height, name });
 
             images.push({
-                pageNumber: i,
+                pageNumber,
                 image: imgPath,
                 width,
                 height,
@@ -56,10 +56,10 @@ async function parsePDF(filePath) {
     }
 
     const resloved = {
+        filePath: pdfPath,
         metadata: metadata.info,
         texts,
         images,
-        filePath: pdfPath,
     };
 
     // 缓存文件解析后的信息
