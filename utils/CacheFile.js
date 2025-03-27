@@ -7,7 +7,7 @@ const DIR_PATH = path.join(__dirname, '../cache');
 const FOLDER_PATH = './files';
 const PDF_FILE_NAME = './main.pdf';
 const IMAGES_PATH = './images';
-const META_FILE_NAME = './meta.json';
+const PARSE_FILE_NAME = './parse.json';
 
 class CacheFile {
     constructor() {
@@ -201,21 +201,22 @@ class CacheFile {
         });
     }
 
-    async saveMetaInfo(json) {
+    // 保存处理后的内容
+    async saveParseInfo(json) {
         if (!this.hash) {
             await this.hashFileAsync(fromFileUrl);
         }
 
         const { path: fileFolderPath } = this.checkFilePath();
 
-        const targetPath = path.join(fileFolderPath, META_FILE_NAME);
+        const targetPath = path.join(fileFolderPath, PARSE_FILE_NAME);
 
         if (this.checkFileExist(targetPath)) {
             // 已经存在，则不进行重新存放
             return targetPath;
         }
 
-        fs.writeFileSync(targetPath, JSON.stringify(json));
+        fs.writeFileSync(targetPath, JSON.stringify(json, null, 4));
 
         return targetPath;
     }

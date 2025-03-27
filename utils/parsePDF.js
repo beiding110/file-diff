@@ -49,15 +49,17 @@ async function parsePDF(filePath) {
         }
     }
 
-    // 缓存文件信息
-    await cacheFile.saveMetaInfo(metadata.info);
-
-    return {
+    const resloved = {
         metadata: metadata.info,
         texts,
         images,
         filePath: pdfPath,
     };
+
+    // 缓存文件解析后的信息
+    await cacheFile.saveParseInfo(resloved);
+
+    return resloved;
 }
 
 // 按字体、字号对内容进行分组
