@@ -1,10 +1,12 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { PNG } = require('pngjs');
 
 const DIR_PATH = './cache';
 const FOLDER_PATH = './files';
 const PDF_FILE_NAME = './main.pdf';
+const IMAGES_PATH = './images';
 
 class CacheFile {
     constructor() {
@@ -86,6 +88,8 @@ class CacheFile {
         const folderPath = path.join(DIR_PATH, FOLDER_PATH);
         const fileFolderPath = path.join(folderPath, `./${this.hash}`);
 
+        let exist = false;
+
         if (!fs.existsSync(DIR_PATH)) {
             fs.mkdirSync(DIR_PATH);
         }
@@ -97,18 +101,24 @@ class CacheFile {
         if (!fs.existsSync(fileFolderPath)) {
             fs.mkdirSync(fileFolderPath);
         } else {
-            return false;
+            exist = true;
         }
 
-        return fileFolderPath;
+        return {
+            path: fileFolderPath,
+            exist,
+        };
     }
 
-    async saveFile(fromFileUrl) {
-        await this.hashFileAsync(fromFileUrl);
+    // 将pdf保存到对应目录
+    async savePdf(fromFileUrl) {
+        if (!this.hash) {
+            await this.hashFileAsync(fromFileUrl);
+        }
 
-        const fileFolderPath = this.checkFilePath();
+        const { path: fileFolderPath, exist } = this.checkFilePath();
 
-        if (!fileFolderPath) {
+        if (exist) {
             // 已经存在，则不进行重新存放
             return;
         }
@@ -116,6 +126,69 @@ class CacheFile {
         const targetPath = path.join(fileFolderPath, PDF_FILE_NAME);
 
         fs.writeFileSync(targetPath, fs.readFileSync(fromFileUrl));
+
+        return targetPath;
+    }
+
+    // 将图片保存至对应目录
+    async saveImage({ data, width, height, name }) {
+        if (!this.hash) {
+            await this.hashFileAsync(fromFileUrl);
+        }
+
+        const { path: fileFolderPath } = this.checkFilePath();
+
+        const targetPath = path.join(fileFolderPath, IMAGES_PATH);
+
+        if (!fs.existsSync(targetPath)) {
+            fs.mkdirSync(targetPath);
+        }
+
+        return new Promise((resolve, reject) => {
+            let newfile = new PNG({ width, height });
+
+            let array;
+
+            switch (data.length) {
+                case width * height * 3: {
+                    array = new Uint8ClampedArray(width * height * 4);
+
+                    for (let index = 0; index < array.length; index++) {
+                        // Set alpha channel to full
+                        if (index % 4 === 3) {
+                            array[index] = 255;
+                        }
+                        // Copy RGB channel components from the original array
+                        else {
+                            array[index] = data[~~(index / 4) * 3 + (index % 4)];
+                        }
+                    }
+
+                    break;
+                }
+                case width * height * 4: {
+                    array = data;
+                    break;
+                }
+                default: {
+                    console.error('Unknown imgData format!');
+                }
+            }
+
+            newfile.data = array;
+
+            const fileSavePath = path.join(targetPath, `./${name}.png`);
+
+            const pipe = newfile.pack().pipe(fs.createWriteStream(fileSavePath));
+
+            pipe.on('finish', () => {
+                resolve(fileSavePath);
+            });
+
+            pipe.on('error', (e) => {
+                reject(e);
+            });
+        });
     }
 }
 

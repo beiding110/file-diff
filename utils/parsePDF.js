@@ -1,12 +1,9 @@
-const fs = require('fs');
-const path = require('path');
-const { PNG } = require('pngjs');
 const CacheFile = require('./CacheFile.js');
 
 async function parsePDF(filePath) {
     var cacheFile = new CacheFile();
 
-    await cacheFile.saveFile(filePath);
+    const pdfPath = await cacheFile.savePdf(filePath);
 
     const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
@@ -35,20 +32,26 @@ async function parsePDF(filePath) {
         // 本页中的图片
         const imgs = await extractImages(page);
 
-        imgs.forEach((img) => {
+        for (let i = 0; i < imgs.length; i++) {
+            let { data, width, height, name } = imgs[i];
+
+            let imgPath = await cacheFile.saveImage({ data, width, height, name });
+
             images.push({
                 pageNumber: i,
-                image: img,
+                image: imgPath,
+                width,
+                height,
                 viewport,
             });
-        });
+        }
     }
 
     return {
         metadata: metadata.info,
         texts,
         images,
-        filePath,
+        filePath: pdfPath,
     };
 }
 
@@ -101,66 +104,14 @@ async function extractImages(page) {
             let imgIndex = argsArray[i][0];
 
             page.objs.get(imgIndex, async (imgRef) => {
-                const bytes = imgRef.data;
+                const { data, width, height } = imgRef;
 
-                await saveImages(imgRef);
-
-                imgs.push(bytes);
+                imgs.push({ data, width, height, name: imgIndex });
             });
         }
     }
 
     return imgs;
-}
-
-async function saveImages(imgRef) {
-    return new Promise((resolve, reject) => {
-        const { width, height, data } = imgRef;
-
-        let newfile = new PNG({ width, height });
-
-        let array;
-
-        switch (data.length) {
-            case width * height * 3: {
-                array = new Uint8ClampedArray(width * height * 4);
-
-                for (let index = 0; index < array.length; index++) {
-                    // Set alpha channel to full
-                    if (index % 4 === 3) {
-                        array[index] = 255;
-                    }
-                    // Copy RGB channel components from the original array
-                    else {
-                        array[index] = data[~~(index / 4) * 3 + (index % 4)];
-                    }
-                }
-
-                break;
-            }
-            case width * height * 4: {
-                array = data;
-                break;
-            }
-            default: {
-                console.error('Unknown imgData format!');
-            }
-        }
-
-        newfile.data = array;
-
-        const fileSavePath = path.join(__dirname, `../img/${new Date().getTime()}.png`);
-
-        const pipe = newfile.pack().pipe(fs.createWriteStream(fileSavePath));
-
-        pipe.on('finish', () => {
-            resolve();
-        });
-
-        pipe.on('error', () => {
-            reject();
-        });
-    });
 }
 
 module.exports = parsePDF;
