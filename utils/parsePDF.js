@@ -21,7 +21,7 @@ async function parsePDF(filePath) {
     const images = [];
 
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
-        const page = await pdf.getPage(i);
+        const page = await pdf.getPage(pageNumber);
         const viewport = page.getViewport({ scale: 1.0 });
 
         // 按字体划分后的句组
