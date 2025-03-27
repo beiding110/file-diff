@@ -85,6 +85,25 @@ class CacheFile {
         return final;
     }
 
+    // 检查缓存情况
+    checkIsCached() {
+        if (!this.hash) {
+            console.log('请在检查cache前，需要先生成hash');
+            return false;
+        }
+
+        let parseFilePath = path.join(DIR_PATH, FOLDER_PATH, `./${this.hash}`, PARSE_FILE_NAME);
+
+        if (fs.existsSync(parseFilePath)) {
+            let context = fs.readFileSync(parseFilePath);
+
+            return JSON.parse(context);
+        }
+
+        return false;
+    }
+
+    // 检查缓存地址路径是否存在，没有则创建
     checkFilePath() {
         const folderPath = path.join(DIR_PATH, FOLDER_PATH);
         const fileFolderPath = path.join(folderPath, `./${this.hash}`);
@@ -111,6 +130,7 @@ class CacheFile {
         };
     }
 
+    // 检查目标文件（夹）是否存在
     checkFileExist(path) {
         return fs.existsSync(path);
     }

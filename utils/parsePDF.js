@@ -6,6 +6,13 @@ async function parsePDF(filePath) {
     // 缓存pdf文档
     const pdfPath = await cacheFile.savePdf(filePath);
 
+    // 先检查缓存
+    const cache = cacheFile.checkIsCached();
+
+    if (cache) {
+        return cache;
+    }
+
     const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
     const pdf = await pdfjsLib.getDocument(filePath).promise;
