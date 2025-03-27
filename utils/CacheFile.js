@@ -111,20 +111,24 @@ class CacheFile {
         };
     }
 
+    checkFileExist(path) {
+        return fs.existsSync(path);
+    }
+
     // 将pdf保存到对应目录
     async savePdf(fromFileUrl) {
         if (!this.hash) {
             await this.hashFileAsync(fromFileUrl);
         }
 
-        const { path: fileFolderPath, exist } = this.checkFilePath();
-
-        if (exist) {
-            // 已经存在，则不进行重新存放
-            return;
-        }
+        const { path: fileFolderPath } = this.checkFilePath();
 
         const targetPath = path.join(fileFolderPath, PDF_FILE_NAME);
+
+        if (this.checkFileExist(targetPath)) {
+            // 已经存在，则不进行重新存放
+            return targetPath;
+        }
 
         fs.writeFileSync(targetPath, fs.readFileSync(fromFileUrl));
 
@@ -143,6 +147,13 @@ class CacheFile {
 
         if (!fs.existsSync(targetPath)) {
             fs.mkdirSync(targetPath);
+        }
+
+        const fileSavePath = path.join(targetPath, `./${name}.png`);
+
+        if (this.checkFileExist(fileSavePath)) {
+            // 已经存在，则不进行重新存放
+            return fileSavePath;
         }
 
         return new Promise((resolve, reject) => {
@@ -178,8 +189,6 @@ class CacheFile {
 
             newfile.data = array;
 
-            const fileSavePath = path.join(targetPath, `./${name}.png`);
-
             const pipe = newfile.pack().pipe(fs.createWriteStream(fileSavePath));
 
             pipe.on('finish', () => {
@@ -200,6 +209,11 @@ class CacheFile {
         const { path: fileFolderPath } = this.checkFilePath();
 
         const targetPath = path.join(fileFolderPath, META_FILE_NAME);
+
+        if (this.checkFileExist(targetPath)) {
+            // 已经存在，则不进行重新存放
+            return targetPath;
+        }
 
         fs.writeFileSync(targetPath, JSON.stringify(json));
 
