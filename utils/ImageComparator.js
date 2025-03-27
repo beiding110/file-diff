@@ -26,7 +26,7 @@ class ImageComparator {
         for (let i = 0; i < hashA.length; i++) {
             if (hashA[i] !== hashB[i]) distance++;
         }
-        return 1 - distance / hashA.length;
+        return 1 - distance / Math.max(hashA.length, hashB.length);
     }
 
     static async compareImages(bidA, bidB) {
