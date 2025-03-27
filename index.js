@@ -14,7 +14,7 @@ class BidComparator {
         if (biddingFile) {
             const biddingDoc = await parsePDF(biddingFile);
 
-            this.textComparator = new TextComparator(this.extractBiddingPatterns(biddingDoc));
+            this.textComparator = new TextComparator(biddingDoc);
         } else {
             this.textComparator = new TextComparator([]);
         }
@@ -36,10 +36,6 @@ class BidComparator {
         CacheFile.saveResult(this.results);
 
         return this.results;
-    }
-
-    extractBiddingPatterns(biddingDoc) {
-        return biddingDoc.pages.flatMap((page) => page.text).filter((line) => line.trim().length > 0);
     }
 
     async compareBids(bidA, bidB) {

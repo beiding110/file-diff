@@ -29,9 +29,18 @@ async function parsePDF(filePath) {
         const fontGroups = groupDifferentFonts(textContent);
 
         fontGroups.forEach((font) => {
+            let text = font
+                .map((item) => item.str)
+                .join('')
+                .trim(); // 这里之前使用的 /n 改为了空字符串，后续看看是否需要改为' '
+
+            if (!text) {
+                return;
+            }
+
             texts.push({
                 pageNumber,
-                text: font.map((item) => item.str).join(''), // 这里之前使用的 /n 改为了空字符串，后续看看是否需要改为' '
+                text,
                 viewport,
             });
         });
