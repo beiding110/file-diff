@@ -1,4 +1,5 @@
 const CacheFile = require('./CacheFile.js');
+const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.mjs');
 
 async function parsePDF(filePath) {
     var cacheFile = new CacheFile();
@@ -12,8 +13,6 @@ async function parsePDF(filePath) {
     if (cache) {
         return cache;
     }
-
-    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
     const pdf = await pdfjsLib.getDocument(filePath).promise;
     const metadata = await pdf.getMetadata();
