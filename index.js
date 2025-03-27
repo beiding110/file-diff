@@ -1,9 +1,7 @@
-import fs from 'fs';
-import path from 'path';
-
 import parsePDF from './utils/parsePDF.js';
 import TextComparator from './utils/TextComparator.js';
 import ImageComparator from './utils/ImageComparator.js';
+import CacheFile from './utils/CacheFile.js';
 
 class BidComparator {
     constructor() {
@@ -35,6 +33,8 @@ class BidComparator {
             }
         }
 
+        CacheFile.saveResult(this.results);
+
         return this.results;
     }
 
@@ -52,6 +52,7 @@ class BidComparator {
             textSimilarities,
             imageMatches,
             metadataMatches: this.compareMetadata(bidA.metadata, bidB.metadata),
+            addtime: new Date().getTime(),
         };
     }
 
@@ -106,6 +107,4 @@ comparator.imageCompareProgressHandler = function (num, str) {
 
 comparator.processFiles(['./docs/g2-1.pdf', './docs/g2-2.pdf']).then((res) => {
     console.log(res);
-
-    fs.writeFileSync('./docs/result.json', JSON.stringify(res));
 });

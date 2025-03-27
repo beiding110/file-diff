@@ -4,10 +4,13 @@ const path = require('path');
 const { PNG } = require('pngjs');
 
 const DIR_PATH = path.join(__dirname, '../cache');
-const FOLDER_PATH = './files';
+
+const FILE_FOLDER_PATH = './files';
 const PDF_FILE_NAME = './main.pdf';
 const IMAGES_PATH = './images';
 const PARSE_FILE_NAME = './parse.json';
+
+const RESULT_FOLDER_PATH = './result';
 
 class CacheFile {
     constructor() {
@@ -92,7 +95,7 @@ class CacheFile {
             return false;
         }
 
-        let parseFilePath = path.join(DIR_PATH, FOLDER_PATH, `./${this.hash}`, PARSE_FILE_NAME);
+        let parseFilePath = path.join(DIR_PATH, FILE_FOLDER_PATH, `./${this.hash}`, PARSE_FILE_NAME);
 
         if (fs.existsSync(parseFilePath)) {
             let context = fs.readFileSync(parseFilePath);
@@ -105,7 +108,7 @@ class CacheFile {
 
     // 检查缓存地址路径是否存在，没有则创建
     checkFilePath() {
-        const folderPath = path.join(DIR_PATH, FOLDER_PATH);
+        const folderPath = path.join(DIR_PATH, FILE_FOLDER_PATH);
         const fileFolderPath = path.join(folderPath, `./${this.hash}`);
 
         let exist = false;
@@ -158,7 +161,7 @@ class CacheFile {
     // 将图片保存至对应目录
     async saveImage({ data, width, height, name }) {
         if (!this.hash) {
-            await this.hashFileAsync(fromFileUrl);
+            console.error('请先获取文件hash');
         }
 
         const { path: fileFolderPath } = this.checkFilePath();
@@ -224,7 +227,7 @@ class CacheFile {
     // 保存处理后的内容
     async saveParseInfo(json) {
         if (!this.hash) {
-            await this.hashFileAsync(fromFileUrl);
+            console.error('请先获取文件hash');
         }
 
         const { path: fileFolderPath } = this.checkFilePath();
@@ -235,6 +238,30 @@ class CacheFile {
             // 已经存在，则不进行重新存放
             return targetPath;
         }
+
+        fs.writeFileSync(targetPath, JSON.stringify(json, null, 4));
+
+        return targetPath;
+    }
+
+    // 保存结果
+    static saveResult(json) {
+        // 判断缓存文件夹
+        if (!fs.existsSync(DIR_PATH)) {
+            fs.mkdirSync(DIR_PATH);
+        }
+
+        // 判断结果文件夹
+        let folderPath = path.join(DIR_PATH, RESULT_FOLDER_PATH);
+
+        if (!fs.existsSync(folderPath)) {
+            fs.mkdirSync(folderPath);
+        }
+
+        // 进行存储
+        const resultFileName = `./${new Date().getTime()}.json`;
+
+        const targetPath = path.join(folderPath, resultFileName);
 
         fs.writeFileSync(targetPath, JSON.stringify(json, null, 4));
 
