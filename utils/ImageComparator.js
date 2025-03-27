@@ -1,16 +1,21 @@
 const sharp = require('sharp');
 const factoryProgress = require('./factoryProgress.js');
 
+const SIMILARITY = 0.9;
+const RESIZE = { width: 300 };
+
 class ImageComparator {
-    static processHandler = null
+    static processHandler = null;
 
     static async getImageHash(imageBuffer) {
         try {
-            const resized = await sharp(imageBuffer).resize(8, 8).grayscale().raw().toBuffer();
+            const resized = await sharp(imageBuffer).resize(RESIZE).grayscale().raw().toBuffer();
 
             const avg = resized.reduce((sum, val) => sum + val, 0) / resized.length;
+
             return resized.map((val) => (val > avg ? '1' : '0')).join('');
         } catch (error) {
+            console.log(error);
             return '';
         }
     }
@@ -29,13 +34,17 @@ class ImageComparator {
 
         let progress = factoryProgress(bidA.length * bidB.length, this.processHandler);
 
-        for (const imgA of bidA.flatMap((p) => p.image)) {
-            for (const imgB of bidB.flatMap((p) => p.image)) {
-                const similarity = this.compareHashes(await this.getImageHash(imgA), await this.getImageHash(imgB));
+        for (const imgA of bidA) {
+            for (const imgB of bidB) {
+                let { image: imageA, pageNumber: pageNumberA } = imgA;
+                let { image: imageB, pageNumber: pageNumberB } = imgB;
 
-                if (similarity > 0.9) {
+                const similarity = this.compareHashes(await this.getImageHash(imageA), await this.getImageHash(imageB));
+
+                if (similarity > SIMILARITY) {
                     matches.push({
-                        pages: [imgA.pageNumber, imgB.pageNumber],
+                        images: [imageA, imageB],
+                        pages: [pageNumberA, pageNumberB],
                         similarity,
                     });
                 }
