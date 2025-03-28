@@ -26,27 +26,29 @@ class TextComparator {
         return this.compareTexts(cleanA, cleanB);
     }
 
+    // 清除投标文件中，招标文件部分
     removeBiddingContent(texts) {
-        if (!this.biddingContent || !this.biddingContent.length) {
+        if (!this.biddingContent) {
             return texts;
         }
 
-        return texts.reduce((acc, textItem) => {
-            if (
-                !this.biddingContent.some((biddingPage) => {
-                    const diff = Diff.diffChars(textItem.text, biddingPage.text);
+        const clearedArr = [];
+        const { texts: biddingTexts } = this.biddingContent;
 
-                    return diff
-                        .filter((part) => !part.added && !part.removed)
-                        .map((part) => part.value)
-                        .join('');
+        texts.forEach((textItem) => {
+            if (
+                biddingTexts.every(({ text: biddingText }) => {
+                    const { text: bidText } = textItem;
+                    const { similarity } = this.calculateSentenceSimilarity(biddingText, bidText);
+
+                    return similarity < this.options.threshold;
                 })
             ) {
-                acc.push();
+                clearedArr.push(textItem);
             }
+        });
 
-            return acc;
-        }, []);
+        return clearedArr;
     }
 
     // 按句子拆分文本
