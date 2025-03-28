@@ -145,7 +145,7 @@ function _splitByPunctuation(page) {
 // 按句子拆分文本
 function _splitSentences(text) {
     // 支持中文/英文/日文分句
-    const sentenceRegex = /([^\n.!?。！？\u203C\u203D\u2047-\u2049]+([.!?。！？\u203C\u203D\u2047-\u2049]|$))/gmu;
+    const sentenceRegex = /([^\n.!?;。！？；\u203C\u203D\u2047-\u2049]+([.!?;。！？；\u203C\u203D\u2047-\u2049]|$))/gmu;
 
     return text.match(sentenceRegex) || [];
 }
