@@ -24,52 +24,13 @@ async function parsePDF(filePath) {
         const page = await pdf.getPage(pageNumber);
         const viewport = page.getViewport({ scale: 1.0 });
 
-        const textContent = await page.getTextContent();
-        // 按字体划分后的句组
-        const fontGroups = _groupDifferentFonts(textContent);
+        const [pageTexts, pageImages] = await Promise.all([
+            _getPageTexts({ page, viewport, pageNumber, cacheFile }), // 本页中文字
+            _getPageImages({ page, viewport, pageNumber, cacheFile }), // 本页中的图片
+        ]);
 
-        fontGroups.forEach((font) => {
-            let text = font
-                .map((item) => item.str)
-                .join('')
-                .trim(); // 这里之前使用的 /n 改为了空字符串，后续看看是否需要改为' '
-
-            if (!text) {
-                return;
-            }
-
-            let page = {
-                pageNumber,
-                text,
-                viewport,
-            };
-
-            // 将页面中的文字按标点切割
-            let pageSplitByPunctuation = _splitByPunctuation(page);
-
-            texts = [
-                ...texts,
-                ...pageSplitByPunctuation,
-            ];
-        });
-
-        // 本页中的图片
-        const imgs = await _extractImages(page);
-
-        for (let i = 0; i < imgs.length; i++) {
-            let { data, width, height, name } = imgs[i];
-
-            // 缓存图片
-            let imgPath = await cacheFile.saveImage({ data, width, height, name });
-
-            images.push({
-                pageNumber,
-                image: imgPath,
-                width,
-                height,
-                viewport,
-            });
-        }
+        texts = [...texts, ...pageTexts];
+        images = [...images, ...pageImages];
     }
 
     const resloved = {
@@ -83,6 +44,61 @@ async function parsePDF(filePath) {
     await cacheFile.saveParseInfo(resloved);
 
     return resloved;
+}
+
+async function _getPageTexts({ page, viewport, pageNumber, cacheFile }) {
+    const textContent = await page.getTextContent();
+    // 按字体划分后的句组
+    const fontGroups = _groupDifferentFonts(textContent);
+
+    let fonts = [];
+
+    fontGroups.forEach((font) => {
+        let text = font
+            .map((item) => item.str)
+            .join('')
+            .trim(); // 这里之前使用的 /n 改为了空字符串，后续看看是否需要改为' '
+
+        if (!text) {
+            return;
+        }
+
+        let page = {
+            pageNumber,
+            text,
+            viewport,
+        };
+
+        // 将页面中的文字按标点切割
+        let pageSplitByPunctuation = _splitByPunctuation(page);
+
+        fonts = [...fonts, ...pageSplitByPunctuation];
+    });
+
+    return fonts;
+}
+
+async function _getPageImages({ page, viewport, pageNumber, cacheFile }) {
+    const imgs = await _extractImages(page);
+
+    let images = [];
+
+    for (let i = 0; i < imgs.length; i++) {
+        let { data, width, height, name } = imgs[i];
+
+        // 缓存图片
+        let imgPath = await cacheFile.saveImage({ data, width, height, name });
+
+        images.push({
+            pageNumber,
+            image: imgPath,
+            width,
+            height,
+            viewport,
+        });
+    }
+
+    return images;
 }
 
 // 按字体、字号对内容进行分组
