@@ -15,13 +15,17 @@ class TextComparator {
         this.progressHandler = null;
     }
 
-    preprocess(text) {
-        return text.replace(/\s+/g, ' ').trim();
-    }
-
     findSimilarities(textsA, textsB) {
-        const cleanA = this.removeBiddingContent(textsA);
-        const cleanB = this.removeBiddingContent(textsB);
+        const sentencesA = textsA.filter((textItem) => {
+            return textItem.text.length >= this.options.minLength;
+        });
+
+        const sentencesB = textsB.filter((textItem) => {
+            return textItem.text.length >= this.options.minLength;
+        });
+
+        const cleanA = this.removeBiddingContent(sentencesA);
+        const cleanB = this.removeBiddingContent(sentencesB);
 
         return this.compareTexts(cleanA, cleanB);
     }
@@ -51,60 +55,7 @@ class TextComparator {
         return clearedArr;
     }
 
-    // 按句子拆分文本
-    splitSentences(text) {
-        // 支持中文/英文/日文分句
-        const sentenceRegex = /([^\n.!?。！？\u203C\u203D\u2047-\u2049]+([.!?。！？\u203C\u203D\u2047-\u2049]|$))/gmu;
-
-        return text.match(sentenceRegex) || [];
-    }
-
-    preprocess(page) {
-        // 统一全角字符为半角
-        const normalized = page.text
-            .normalize('NFKC')
-            .replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
-            .replace(/\s+/g, ' ')
-            .trim();
-
-        // 将断句进一步拆分
-        const sentences = this.splitSentences(normalized)
-            .map((s) => s.replace(/^\s+|\s+$/g, ''))
-            .filter((s) => s.length > 0);
-
-        return sentences.map((s) => {
-            return {
-                ...page,
-                text: s,
-            };
-        });
-    }
-
-    compareTexts(textsA, textsB) {
-        const sentencesA = textsA
-            .reduce((arr, textItem) => {
-                let sentences = this.preprocess(textItem);
-
-                arr = [...arr, ...sentences];
-
-                return arr;
-            }, [])
-            .filter((textItem) => {
-                return textItem.text.length >= this.options.minLength;
-            });
-
-        const sentencesB = textsB
-            .reduce((arr, textItem) => {
-                let sentences = this.preprocess(textItem);
-
-                arr = [...arr, ...sentences];
-
-                return arr;
-            }, [])
-            .filter((textItem) => {
-                return textItem.text.length >= this.options.minLength;
-            });
-
+    compareTexts(sentencesA, sentencesB) {
         const similarityMap = [];
 
         let progress = factoryProgress(sentencesA.length * sentencesB.length, this.progressHandler);

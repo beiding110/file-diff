@@ -17,16 +17,16 @@ async function parsePDF(filePath) {
     const pdf = await pdfjsLib.getDocument(filePath).promise;
     const metadata = await pdf.getMetadata();
 
-    const texts = [];
-    const images = [];
+    let texts = [];
+    let images = [];
 
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
         const page = await pdf.getPage(pageNumber);
         const viewport = page.getViewport({ scale: 1.0 });
 
-        // 按字体划分后的句组
         const textContent = await page.getTextContent();
-        const fontGroups = groupDifferentFonts(textContent);
+        // 按字体划分后的句组
+        const fontGroups = _groupDifferentFonts(textContent);
 
         fontGroups.forEach((font) => {
             let text = font
@@ -38,15 +38,23 @@ async function parsePDF(filePath) {
                 return;
             }
 
-            texts.push({
+            let page = {
                 pageNumber,
                 text,
                 viewport,
-            });
+            };
+
+            // 将页面中的文字按标点切割
+            let pageSplitByPunctuation = _splitByPunctuation(page);
+
+            texts = [
+                ...texts,
+                ...pageSplitByPunctuation,
+            ];
         });
 
         // 本页中的图片
-        const imgs = await extractImages(page);
+        const imgs = await _extractImages(page);
 
         for (let i = 0; i < imgs.length; i++) {
             let { data, width, height, name } = imgs[i];
@@ -78,7 +86,7 @@ async function parsePDF(filePath) {
 }
 
 // 按字体、字号对内容进行分组
-function groupDifferentFonts(textContent) {
+function _groupDifferentFonts(textContent) {
     const textInDifferentFonts = [];
     let lastText = null;
 
@@ -112,7 +120,37 @@ function groupDifferentFonts(textContent) {
     return textInDifferentFonts;
 }
 
-async function extractImages(page) {
+// 按标点符号切割
+function _splitByPunctuation(page) {
+    // 统一全角字符为半角
+    const normalized = page.text
+        .normalize('NFKC')
+        .replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    // 将断句进一步拆分
+    const sentences = _splitSentences(normalized)
+        .map((s) => s.replace(/^\s+|\s+$/g, ''))
+        .filter((s) => s.length > 0);
+
+    return sentences.map((s) => {
+        return {
+            ...page,
+            text: s,
+        };
+    });
+}
+
+// 按句子拆分文本
+function _splitSentences(text) {
+    // 支持中文/英文/日文分句
+    const sentenceRegex = /([^\n.!?。！？\u203C\u203D\u2047-\u2049]+([.!?。！？\u203C\u203D\u2047-\u2049]|$))/gmu;
+
+    return text.match(sentenceRegex) || [];
+}
+
+async function _extractImages(page) {
     const ops = await page.getOperatorList(),
         { fnArray, argsArray } = ops;
 
