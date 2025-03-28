@@ -1,3 +1,5 @@
+import { v4 as uuidv4 } from 'uuid';
+
 import parsePDF from './utils/parsePDF.js';
 import TextComparator from './utils/TextComparator.js';
 import ImageComparator from './utils/ImageComparator.js';
@@ -7,11 +9,33 @@ class BidComparator {
     constructor() {
         this.results = [];
 
+        this.bidDocsMatrix = [];
+
         this.textComparator = null;
     }
 
     preload(file) {
         return parsePDF(file);
+    }
+
+    async across(bidFiles) {
+        const bidDocs = await Promise.all(bidFiles.map(parsePDF));
+
+        const matrix = [];
+
+        // 两两对比投标文件
+        for (let i = 0; i < bidDocs.length; i++) {
+            for (let j = i + 1; j < bidDocs.length; j++) {
+                matrix.push({
+                    id: uuidv4(),
+                    files: [bidDocs[i], bidDocs[j]],
+                });
+            }
+        }
+
+        this.bidDocsMatrix = matrix;
+
+        return matrix;
     }
 
     async processFiles(bidFiles, biddingFile) {
@@ -23,18 +47,26 @@ class BidComparator {
             this.textComparator = new TextComparator([]);
         }
 
-        // 进度
-        this.textComparator.progressHandler = this.textCompareProgressHandler;
-        ImageComparator.processHandler = this.imageCompareProgressHandler;
+        if (!this.bidDocsMatrix.length) {
+            await this.across(bidFiles);
+        }
 
-        const bidDocs = await Promise.all(bidFiles.map(parsePDF));
+        for (let i = 0; i < this.bidDocsMatrix.length; i++) {
+            let { id, files } = this.bidDocsMatrix[i];
 
-        // 两两对比投标文件
-        for (let i = 0; i < bidDocs.length; i++) {
-            for (let j = i + 1; j < bidDocs.length; j++) {
-                const result = await this.compareBids(bidDocs[i], bidDocs[j]);
-                this.results.push(result);
+            // 进度
+            if (this.textCompareProgressHandlerFactory) {
+                this.textComparator.progressHandler = this.textCompareProgressHandlerFactory(id);
             }
+
+            if (this.imageCompareProgressHandlerFactory) {
+                ImageComparator.processHandler = this.imageCompareProgressHandlerFactory(id);
+            }
+
+            // 进行比对
+            const result = await this.compareBids(files[0], files[1]);
+
+            this.results.push(result);
         }
 
         CacheFile.saveResult(this.results);
@@ -97,16 +129,22 @@ class BidComparator {
 
 let comparator = new BidComparator();
 
-comparator.textCompareProgressHandler = function (num, str) {
-    console.log(num, str);
+comparator.textCompareProgressHandlerFactory = function (id) {
+    return function (num, str) {
+        console.log(id, num, str);
+    };
 };
 
-comparator.imageCompareProgressHandler = function (num, str) {
-    console.log(num, str);
+comparator.imageCompareProgressHandlerFactory = function (id) {
+    return function (num, str) {
+        console.log(id, num, str);
+    };
 };
 
 comparator.preload('./docs/g2-3.pdf');
 
-comparator.processFiles(['./docs/g2-1.pdf', './docs/g2-2.pdf'], './docs/g2-exclude.pdf').then((res) => {
-    console.log(res);
-});
+comparator
+    .processFiles(['./docs/g2-1.pdf', './docs/g2-2.pdf', './docs/g2-3.pdf'], './docs/g2-exclude.pdf')
+    .then((res) => {
+        console.log(res);
+    });
