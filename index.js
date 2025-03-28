@@ -10,6 +10,10 @@ class BidComparator {
         this.textComparator = null;
     }
 
+    preload(file) {
+        return parsePDF(file);
+    }
+
     async processFiles(bidFiles, biddingFile) {
         if (biddingFile) {
             const biddingDoc = await parsePDF(biddingFile);
@@ -101,6 +105,8 @@ comparator.imageCompareProgressHandler = function (num, str) {
     console.log(num, str);
 };
 
-comparator.processFiles(['./docs/g2-1.pdf', './docs/g2-2.pdf']).then((res) => {
+comparator.preload('./docs/g2-3.pdf');
+
+comparator.processFiles(['./docs/g2-1.pdf', './docs/g2-2.pdf'], './docs/g2-exclude.pdf').then((res) => {
     console.log(res);
 });
