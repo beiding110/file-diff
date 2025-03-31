@@ -267,6 +267,57 @@ class CacheFile {
 
         return targetPath;
     }
+
+    static getResult() {
+        let folderPath = path.join(DIR_PATH, RESULT_FOLDER_PATH);
+
+        if (!fs.existsSync(folderPath)) {
+            return [];
+        }
+
+        const files = getAllFilesInfo(folderPath);
+
+        return files
+            .filter((file) => {
+                return /\.(json)$/.test(file.name);
+            })
+            .map((item) => {
+                const context = fs.readFileSync(item.path);
+
+                return JSON.parse(context);
+            });
+    }
+}
+
+function getAllFilesInfo(dirPath) {
+    const itemsInfo = [];
+
+    function traverseDirectory(currentPath) {
+        const items = fs.readdirSync(currentPath);
+
+        for (const item of items) {
+            const itemPath = path.join(currentPath, item);
+            const stat = fs.statSync(itemPath);
+
+            if (stat.isFile() || stat.isDirectory()) {
+                itemsInfo.push({
+                    name: item,
+                    path: itemPath,
+                    size: stat.size,
+                    createdAt: stat.ctime,
+                    modifiedAt: stat.mtime,
+                    isDirectory: stat.isDirectory(),
+                });
+            }
+
+            if (stat.isDirectory()) {
+                traverseDirectory(itemPath);
+            }
+        }
+    }
+
+    traverseDirectory(dirPath);
+    return itemsInfo;
 }
 
 module.exports = CacheFile;
