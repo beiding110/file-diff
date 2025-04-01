@@ -55,6 +55,8 @@ class BidComparator {
             await this.across(bidFiles);
         }
 
+        const groupid = uuidv4();
+
         for (let i = 0; i < this.bidDocsMatrix.length; i++) {
             let { id, files } = this.bidDocsMatrix[i];
 
@@ -70,10 +72,12 @@ class BidComparator {
             // 进行比对
             const result = await this.compareBids(files[0], files[1]);
 
+            result.groupid = groupid;
+
             this.results.push(result);
         }
 
-        CacheFile.saveResult(this.results);
+        CacheFile.saveResult(this.results, groupid);
 
         return this.results;
     }
@@ -84,6 +88,8 @@ class BidComparator {
         const imageMatches = await ImageComparator.compareImages(bidA.images, bidB.images);
 
         return {
+            groupid: '',
+            uuid: uuidv4(),
             names: [bidA.fileName, bidB.fileName],
             files: [bidA.filePath, bidB.filePath],
             textSimilarities,
