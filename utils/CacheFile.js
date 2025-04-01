@@ -274,7 +274,7 @@ class CacheFile {
 
         if (filename) {
             // 获取具体文件
-            const resultFileName = `./${resultFileExtraName}.json`; 
+            const resultFileName = `./${filename}.json`; 
             const targetPath = path.join(folderPath, resultFileName);
 
             if (!fs.existsSync(targetPath)) {

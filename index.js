@@ -18,8 +18,8 @@ class BidComparator {
         return parsePDF(file);
     }
 
-    static history() {
-        return CacheFile.getResult();
+    static history(file) {
+        return CacheFile.getResult(file);
     }
 
     async across(bidFiles) {
