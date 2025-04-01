@@ -18,6 +18,10 @@ class BidComparator {
         return parsePDF(file);
     }
 
+    static history() {
+        return CacheFile.getResult();
+    }
+
     async across(bidFiles) {
         const bidDocs = await Promise.all(bidFiles.map(parsePDF));
 
