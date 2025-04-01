@@ -1,3 +1,4 @@
+const path = require('path');
 const CacheFile = require('./CacheFile.js');
 const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.mjs');
 
@@ -34,6 +35,7 @@ async function parsePDF(filePath) {
     }
 
     const resloved = {
+        fileName: path.basename(filePath),
         filePath: pdfPath,
         metadata: metadata.info,
         texts,
