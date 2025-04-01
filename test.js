@@ -14,7 +14,7 @@ comparator.imageCompareProgressHandlerFactory = function (id) {
     };
 };
 
-comparator.preload('./docs/g2-3.pdf');
+BidComparator.preload('./docs/g2-3.pdf');
 
 comparator
     .processFiles(

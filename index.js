@@ -14,7 +14,7 @@ class BidComparator {
         this.textComparator = null;
     }
 
-    preload(file) {
+    static preload(file) {
         return parsePDF(file);
     }
 
