@@ -15,24 +15,35 @@ class TextComparator {
         this.progressHandler = null;
     }
 
-    findSimilarities(textsA, textsB) {
-        const sentencesA = textsA.filter((textItem) => {
-            return textItem.text.length >= this.options.minLength;
-        });
+    findSimilarities(textsA, textsB, usePromise) {
+        const handler = () => {
+            const sentencesA = textsA.filter((textItem) => {
+                return textItem.text.length >= this.options.minLength;
+            });
 
-        const sentencesB = textsB.filter((textItem) => {
-            return textItem.text.length >= this.options.minLength;
-        });
+            const sentencesB = textsB.filter((textItem) => {
+                return textItem.text.length >= this.options.minLength;
+            });
 
-        const cleanA = this.removeBiddingContent(sentencesA);
-        const cleanB = this.removeBiddingContent(sentencesB);
+            const cleanA = this.removeBiddingContent(sentencesA);
+            const cleanB = this.removeBiddingContent(sentencesB);
 
-        return this.compareTexts(cleanA, cleanB);
+            return this.compareTexts(cleanA, cleanB);
+        };
+
+        if (usePromise) {
+            return new Promise((resolve, reject) => {
+                const result = handler();
+                resolve(result);
+            });
+        }
+
+        return handler();
     }
 
     // 清除投标文件中，招标文件部分
     removeBiddingContent(texts) {
-        if (!this.biddingContent) {
+        if (!this.biddingContent || !this.biddingContent.length) {
             return texts;
         }
 
