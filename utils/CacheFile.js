@@ -245,7 +245,7 @@ class CacheFile {
     }
 
     // 保存结果
-    static saveResult(json) {
+    static saveResult(json, filename) {
         // 判断缓存文件夹
         if (!fs.existsSync(DIR_PATH)) {
             fs.mkdirSync(DIR_PATH);
@@ -259,7 +259,8 @@ class CacheFile {
         }
 
         // 进行存储
-        const resultFileName = `./${new Date().getTime()}.json`;
+        const resultFileExtraName = filename || new Date().getTime();
+        const resultFileName = `./${resultFileExtraName}.json`;
 
         const targetPath = path.join(folderPath, resultFileName);
 
@@ -268,9 +269,24 @@ class CacheFile {
         return targetPath;
     }
 
-    static getResult() {
+    static getResult(filename) {
         let folderPath = path.join(DIR_PATH, RESULT_FOLDER_PATH);
 
+        if (filename) {
+            // 获取具体文件
+            const resultFileName = `./${resultFileExtraName}.json`; 
+            const targetPath = path.join(folderPath, resultFileName);
+
+            if (!fs.existsSync(targetPath)) {
+                return null;
+            }
+
+            const context = fs.readFileSync(item.path);
+
+            return JSON.parse(context);
+        }
+
+        // 获取全部文件
         if (!fs.existsSync(folderPath)) {
             return [];
         }
