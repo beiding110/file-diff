@@ -15,65 +15,63 @@ class TextComparator {
         this.progressHandler = null;
     }
 
-    findSimilarities(textsA, textsB, usePromise) {
-        const handler = () => {
-            const sentencesA = textsA.filter((textItem) => {
-                return textItem.text.length >= this.options.minLength;
-            });
+    async findSimilarities(textsA, textsB) {
+        const sentencesA = textsA.filter((textItem) => {
+            return textItem.text.length >= this.options.minLength;
+        });
 
-            const sentencesB = textsB.filter((textItem) => {
-                return textItem.text.length >= this.options.minLength;
-            });
+        const sentencesB = textsB.filter((textItem) => {
+            return textItem.text.length >= this.options.minLength;
+        });
 
-            const cleanA = this.removeBiddingContent(sentencesA);
-            const cleanB = this.removeBiddingContent(sentencesB);
+        const cleanA = await this.removeBiddingContent(sentencesA);
+        const cleanB = await this.removeBiddingContent(sentencesB);
 
-            return this.compareTexts(cleanA, cleanB);
-        };
+        const result = await this.compareTexts(cleanA, cleanB);
 
-        if (usePromise) {
-            return new Promise((resolve, reject) => {
-                const result = handler();
-                resolve(result);
-            });
-        }
-
-        return handler();
+        return result;
     }
 
     // 清除投标文件中，招标文件部分
-    removeBiddingContent(texts) {
-        if (!this.biddingContent || !this.biddingContent.length) {
+    async removeBiddingContent(texts) {
+        if (!this.biddingContent) {
             return texts;
         }
 
         const clearedArr = [];
         const { texts: biddingTexts } = this.biddingContent;
 
-        texts.forEach((textItem) => {
-            if (
-                biddingTexts.every(({ text: biddingText }) => {
-                    const { text: bidText } = textItem;
-                    const { similarity } = this.calculateSentenceSimilarity(biddingText, bidText);
+        for (let textItem of texts) {
+            let { text: bidText } = textItem;
 
-                    return similarity < this.options.threshold;
-                })
-            ) {
+            let allBiddingTextsNotSimilarToTextIem = true;
+
+            for (let { text: biddingText } of biddingTexts) {
+                const { similarity } = await this.calculateSentenceSimilarity(biddingText, bidText);
+
+                if (similarity >= this.options.threshold) {
+                    allBiddingTextsNotSimilarToTextIem = false;
+
+                    break;
+                }
+            }
+
+            if (allBiddingTextsNotSimilarToTextIem) {
                 clearedArr.push(textItem);
             }
-        });
+        }
 
         return clearedArr;
     }
 
-    compareTexts(sentencesA, sentencesB) {
+    async compareTexts(sentencesA, sentencesB) {
         const similarityMap = [];
 
         let progress = factoryProgress(sentencesA.length * sentencesB.length, this.progressHandler);
 
-        sentencesA.forEach((pa) => {
-            sentencesB.forEach((pb) => {
-                const { a, b, similarity } = this.calculateSentenceSimilarity(pa.text, pb.text);
+        for (let pa of sentencesA) {
+            for (let pb of sentencesB) {
+                const { a, b, similarity } = await this.calculateSentenceSimilarity(pa.text, pb.text);
 
                 if (similarity >= this.options.threshold) {
                     similarityMap.push({
@@ -93,8 +91,8 @@ class TextComparator {
                 }
 
                 progress();
-            });
-        });
+            }
+        }
 
         return similarityMap;
     }
@@ -106,34 +104,37 @@ class TextComparator {
     }
 
     calculateSentenceSimilarity(a, b) {
-        const diff = Diff.diffWords(a, b);
+        return new Promise((resolve) => {
+            // todo: 这个方法在electron主进程中运行时，会让渲染进程卡死，需要打成异步
+            const diff = Diff.diffWords(a, b);
 
-        let sameCount = 0;
+            let sameCount = 0;
 
-        let strA = '',
-            strB = '';
+            let strA = '',
+                strB = '';
 
-        diff.forEach((part) => {
-            if (part.removed) {
-                // 被移除的，属于左边
-                strA += part.value;
-            } else if (part.added) {
-                // 新增的，属于右边
-                strB += part.value;
-            } else {
-                // 两边相同的部分
-                sameCount += part.value.length;
+            diff.forEach((part) => {
+                if (part.removed) {
+                    // 被移除的，属于左边
+                    strA += part.value;
+                } else if (part.added) {
+                    // 新增的，属于右边
+                    strB += part.value;
+                } else {
+                    // 两边相同的部分
+                    sameCount += part.value.length;
 
-                strA += `<b>${part.value}</b>`;
-                strB += `<b>${part.value}</b>`;
-            }
+                    strA += `<b>${part.value}</b>`;
+                    strB += `<b>${part.value}</b>`;
+                }
+            });
+
+            resolve({
+                a: strA.replaceAll('</b><b>', ''),
+                b: strB.replaceAll('</b><b>', ''),
+                similarity: sameCount / Math.max(a.length, b.length),
+            });
         });
-
-        return {
-            a: strA.replaceAll('</b><b>', ''),
-            b: strB.replaceAll('</b><b>', ''),
-            similarity: sameCount / Math.max(a.length, b.length),
-        };
     }
 }
 

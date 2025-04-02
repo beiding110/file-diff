@@ -48,7 +48,7 @@ class BidComparator {
 
             this.textComparator = new TextComparator(biddingDoc);
         } else {
-            this.textComparator = new TextComparator([]);
+            this.textComparator = new TextComparator();
         }
 
         if (!this.bidDocsMatrix.length) {
@@ -83,7 +83,7 @@ class BidComparator {
     }
 
     async compareBids(bidA, bidB) {
-        const textSimilarities = this.textComparator.findSimilarities(bidA.texts, bidB.texts);
+        const textSimilarities = await this.textComparator.findSimilarities(bidA.texts, bidB.texts);
 
         const imageMatches = await ImageComparator.compareImages(bidA.images, bidB.images);
 
