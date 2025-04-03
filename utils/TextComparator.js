@@ -1,4 +1,4 @@
-const Diff = require('diff');
+const { diffWords } = require('../worker/diff.work.js');
 const factoryProgress = require('./factoryProgress.js');
 
 class TextComparator {
@@ -104,35 +104,34 @@ class TextComparator {
     }
 
     calculateSentenceSimilarity(a, b) {
-        return new Promise((resolve) => {
-            // todo: 这个方法在electron主进程中运行时，会让渲染进程卡死，需要打成异步
-            const diff = Diff.diffWords(a, b);
+        return new Promise((resolve, reject) => {
+            diffWords(a, b).then((diff) => {
+                let sameCount = 0;
 
-            let sameCount = 0;
+                let strA = '',
+                    strB = '';
 
-            let strA = '',
-                strB = '';
+                diff.forEach((part) => {
+                    if (part.removed) {
+                        // 被移除的，属于左边
+                        strA += part.value;
+                    } else if (part.added) {
+                        // 新增的，属于右边
+                        strB += part.value;
+                    } else {
+                        // 两边相同的部分
+                        sameCount += part.value.length;
 
-            diff.forEach((part) => {
-                if (part.removed) {
-                    // 被移除的，属于左边
-                    strA += part.value;
-                } else if (part.added) {
-                    // 新增的，属于右边
-                    strB += part.value;
-                } else {
-                    // 两边相同的部分
-                    sameCount += part.value.length;
+                        strA += `<b>${part.value}</b>`;
+                        strB += `<b>${part.value}</b>`;
+                    }
+                });
 
-                    strA += `<b>${part.value}</b>`;
-                    strB += `<b>${part.value}</b>`;
-                }
-            });
-
-            resolve({
-                a: strA.replaceAll('</b><b>', ''),
-                b: strB.replaceAll('</b><b>', ''),
-                similarity: sameCount / Math.max(a.length, b.length),
+                resolve({
+                    a: strA.replaceAll('</b><b>', ''),
+                    b: strB.replaceAll('</b><b>', ''),
+                    similarity: sameCount / Math.max(a.length, b.length),
+                });
             });
         });
     }
