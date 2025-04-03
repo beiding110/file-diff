@@ -1,9 +1,9 @@
-import { v4 as uuidv4 } from 'uuid';
+const { v4: uuidv4 } = require('uuid');
 
-import parsePDF from './utils/parsePDF.js';
-import TextComparator from './utils/TextComparator.js';
-import ImageComparator from './utils/ImageComparator.js';
-import CacheFile from './utils/CacheFile.js';
+const parsePDF = require('./utils/parsePDF.js');
+const TextComparator = require('./utils/TextComparator.js');
+const ImageComparator = require('./utils/ImageComparator.js');
+const CacheFile = require('./utils/CacheFile.js');
 
 class BidComparator {
     constructor() {
@@ -138,4 +138,9 @@ class BidComparator {
     }
 }
 
-export default BidComparator;
+module.exports = {
+    BidComparator,
+    setCachePath(path) {
+        CacheFile.setCachePath(path);
+    },
+};

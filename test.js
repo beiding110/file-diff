@@ -1,4 +1,4 @@
-import BidComparator from './index.js';
+import { BidComparator } from './index.js';
 
 let comparator = new BidComparator();
 
@@ -19,10 +19,10 @@ BidComparator.preload('./docs/g2-3.pdf');
 comparator
     .processFiles(
         [
-            './docs/g2-1.pdf', 
-            './docs/g2-2.pdf', 
+            './docs/g2-1.pdf',
+            './docs/g2-2.pdf',
             // './docs/g2-3.pdf',
-        ], 
+        ]
         // './docs/g2-exclude.pdf'
     )
     .then((res) => {

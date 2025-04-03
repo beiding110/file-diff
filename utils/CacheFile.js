@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { PNG } = require('pngjs');
 
-const DIR_PATH = path.join(__dirname, '../cache');
+var DIR_PATH = path.join(__dirname, '../cache');
 
 const FILE_FOLDER_PATH = './files';
 const PDF_FILE_NAME = './main.pdf';
@@ -23,6 +23,14 @@ class CacheFile {
         SHA1: 'SHA1',
         MD5: 'MD5',
     };
+
+    static setCachePath(path) {
+        if (!path) {
+            return;
+        }
+
+        DIR_PATH = path;
+    }
 
     /**
      * promise
@@ -274,7 +282,7 @@ class CacheFile {
 
         if (filename) {
             // 获取具体文件
-            const resultFileName = `./${filename}.json`; 
+            const resultFileName = `./${filename}.json`;
             const targetPath = path.join(folderPath, resultFileName);
 
             if (!fs.existsSync(targetPath)) {
