@@ -11,7 +11,7 @@ module.exports = function factoryProgress(total, cb) {
 
         let now = Date.now();
 
-        if (percentage === 1) {
+        if (Number(percentage) === 1) {
             // 立即执行一次
             lastTime = now;
 
