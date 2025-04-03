@@ -70,7 +70,7 @@ class BidComparator {
             }
 
             // 进行比对
-            const result = await this.compareBids(files[0], files[1]);
+            const result = await this.compareBids(files[0], files[1], id);
 
             result.groupid = groupid;
 
@@ -82,14 +82,14 @@ class BidComparator {
         return this.results;
     }
 
-    async compareBids(bidA, bidB) {
+    async compareBids(bidA, bidB, id) {
         const textSimilarities = await this.textComparator.findSimilarities(bidA.texts, bidB.texts);
 
         const imageMatches = await ImageComparator.compareImages(bidA.images, bidB.images);
 
         return {
             groupid: '',
-            uuid: uuidv4(),
+            uuid: id || uuidv4(),
             names: [bidA.fileName, bidB.fileName],
             files: [bidA.filePath, bidB.filePath],
             textSimilarities,
