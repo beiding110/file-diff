@@ -289,7 +289,7 @@ class CacheFile {
                 return null;
             }
 
-            const context = fs.readFileSync(item.path);
+            const context = fs.readFileSync(targetPath);
 
             return JSON.parse(context);
         }
