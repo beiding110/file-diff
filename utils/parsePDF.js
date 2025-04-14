@@ -173,7 +173,8 @@ async function _extractImages(page) {
         { fnArray, argsArray } = ops;
 
     // 提取图片
-    let imgs = [];
+    let imgs = [],
+        promiseList = [];
 
     for (let i = 0; i < fnArray.length; i++) {
         let curr = fnArray[i];
@@ -181,13 +182,21 @@ async function _extractImages(page) {
         if ([pdfjsLib.OPS.paintImageXObject, pdfjsLib.OPS.paintJpegXObject].includes(curr)) {
             let imgIndex = argsArray[i][0];
 
-            page.objs.get(imgIndex, async (imgRef) => {
-                const { data, width, height } = imgRef;
+            promiseList.push(function () {
+                return new Promise((resolve) => {
+                    page.objs.get(imgIndex, async (imgRef) => {
+                        const { data, width, height } = imgRef;
 
-                imgs.push({ data, width, height, name: imgIndex });
+                        imgs.push({ data, width, height, name: imgIndex });
+
+                        resolve();
+                    });
+                });
             });
         }
     }
+
+    await Promise.all(promiseList.map((p) => p()));
 
     return imgs;
 }
