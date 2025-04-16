@@ -179,8 +179,21 @@ async function _extractImages(page) {
     for (let i = 0; i < fnArray.length; i++) {
         let curr = fnArray[i];
 
-        if ([pdfjsLib.OPS.paintImageXObject, pdfjsLib.OPS.paintJpegXObject].includes(curr)) {
+        if (
+            [
+                pdfjsLib.OPS.paintImageXObject,
+                pdfjsLib.OPS.paintInlineImageXObject,
+                pdfjsLib.OPS.paintInlineImageXObjectGroup,
+                pdfjsLib.OPS.paintImageXObjectRepeat,
+                pdfjsLib.OPS.paintXObject,
+            ].includes(curr)
+        ) {
             let imgIndex = argsArray[i][0];
+
+            if (!/^(img_)/.test(imgIndex)) {
+                // 过滤不是图片的情况
+                continue;
+            }
 
             promiseList.push(function () {
                 return new Promise((resolve) => {
