@@ -46,9 +46,9 @@ class BidComparator {
         if (biddingFile) {
             const biddingDoc = await parsePDF(biddingFile);
 
-            this.textComparator = new TextComparator(biddingDoc);
+            this.textComparator = new TextComparator(biddingDoc, _STORE_SETTINGS_TEXT);
         } else {
-            this.textComparator = new TextComparator();
+            this.textComparator = new TextComparator(null, _STORE_SETTINGS_TEXT);
         }
 
         if (!this.bidDocsMatrix.length) {
@@ -138,9 +138,32 @@ class BidComparator {
     }
 }
 
+// 文字对比的设置缓存，在实例化时传入
+const _STORE_SETTINGS_TEXT = {};
+
 module.exports = {
     BidComparator,
     setCachePath(path) {
         CacheFile.setCachePath(path);
+    },
+    updateSettings({ text, image }) {
+        if (text) {
+            const { threshold, minLength } = text;
+
+            if (threshold) {
+                _STORE_SETTINGS_TEXT.threshold = threshold;
+            }
+
+            if (minLength) {
+                _STORE_SETTINGS_TEXT.minLength = minLength;
+            }
+        }
+
+        if (image) {
+            const { similarity, resizeWidth } = image;
+
+            ImageComparator.SIMILARITY = similarity || ImageComparator.SIMILARITY;
+            ImageComparator.RESIZE.width = resizeWidth || ImageComparator.RESIZE.width;
+        }
     },
 };

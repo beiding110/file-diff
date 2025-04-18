@@ -1,4 +1,4 @@
-import { BidComparator } from './index.js';
+const { BidComparator, setCachePath, updateSettings } = require('./index.js');
 
 let comparator = new BidComparator();
 
@@ -14,14 +14,27 @@ comparator.imageCompareProgressHandlerFactory = function (id) {
     };
 };
 
-BidComparator.preload('./docs/g2-3.pdf');
+// BidComparator.preload('./docs/g2-2.pdf');
 
+// 更新对比设置
+updateSettings({
+    text: {
+        threshold: 0.8,
+        minLength: 15,
+    },
+    images: {
+        similarity: 0.9,
+        resizeWidth: 100,
+    },
+});
+
+// 开始对比
 comparator
     .processFiles(
         [
             './docs/g2-1.pdf',
             './docs/g2-2.pdf',
-            // './docs/g2-3.pdf',
+            './docs/g2-3.pdf',
         ]
         // './docs/g2-exclude.pdf'
     )

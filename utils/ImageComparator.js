@@ -1,15 +1,15 @@
 const sharp = require('sharp');
 const factoryProgress = require('./factoryProgress.js');
 
-const SIMILARITY = 0.9;
-const RESIZE = { width: 300 };
-
 class ImageComparator {
+    static SIMILARITY = 0.9;
+    static RESIZE = { width: 300 };
+
     static processHandler = null;
 
     static async getImageHash(imageBuffer) {
         try {
-            const resized = await sharp(imageBuffer).resize(RESIZE).grayscale().raw().toBuffer();
+            const resized = await sharp(imageBuffer).resize(this.RESIZE).grayscale().raw().toBuffer();
 
             const avg = resized.reduce((sum, val) => sum + val, 0) / resized.length;
 
@@ -43,7 +43,7 @@ class ImageComparator {
 
                 const similarity = this.compareHashes(await this.getImageHash(imageA), await this.getImageHash(imageB));
 
-                if (similarity > SIMILARITY) {
+                if (similarity > this.SIMILARITY) {
                     matches.push({
                         images: [imageA, imageB],
                         pages: [pageNumberA, pageNumberB],
