@@ -15,7 +15,7 @@ if (isMainThread) {
                     resolve(diff);
                 });
     
-                diffWorker.on('error', (error) => {
+                diffWorker.once('error', (error) => {
                     reject(error);
                 });
             });
