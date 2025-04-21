@@ -87,6 +87,7 @@ class TextComparator {
                             pageNumber: pb.pageNumber,
                             // viewport: pb.viewport,
                         },
+                        similarity,
                     });
                 }
 
