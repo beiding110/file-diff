@@ -1,4 +1,4 @@
-const sharp = require('sharp');
+const { compareImg } = require('../worker/sharp.worker.js');
 const factoryProgress = require('./factoryProgress.js');
 
 class ImageComparator {
@@ -6,30 +6,6 @@ class ImageComparator {
     static RESIZE = { width: 300 };
 
     static processHandler = null;
-
-    static async getImageHash(imageBuffer) {
-        try {
-            const resized = await sharp(imageBuffer).resize(this.RESIZE).grayscale().raw().toBuffer();
-
-            const avg = resized.reduce((sum, val) => sum + val, 0) / resized.length;
-
-            return resized.map((val) => (val > avg ? '1' : '0')).join('');
-        } catch (error) {
-            console.log(error);
-            return '';
-        }
-    }
-
-    static compareHashes(hashA, hashB) {
-        let distance = 0;
-
-        for (let i = 0; i < hashA.length; i++) {
-            if (hashA[i] === hashB[i]) {
-                distance++;
-            }
-        }
-        return distance / Math.max(hashA.length, hashB.length);
-    }
 
     static async compareImages(bidA, bidB) {
         const matches = [];
@@ -41,7 +17,7 @@ class ImageComparator {
                 let { image: imageA, pageNumber: pageNumberA } = imgA;
                 let { image: imageB, pageNumber: pageNumberB } = imgB;
 
-                const similarity = this.compareHashes(await this.getImageHash(imageA), await this.getImageHash(imageB));
+                const similarity = await compareImg({ imgA: imageA, imgB: imageB, resize: this.RESIZE });
 
                 if (similarity > this.SIMILARITY) {
                     matches.push({

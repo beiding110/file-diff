@@ -4,17 +4,17 @@ if (isMainThread) {
     const diffWorker = new Worker(__filename);
 
     module.exports = {
-        diffWords(a, b) {
+        diffWords({ a, b }) {
             return new Promise((resolve, reject) => {
                 diffWorker.postMessage({
                     a,
                     b,
                 });
-    
+
                 diffWorker.once('message', (diff) => {
                     resolve(diff);
                 });
-    
+
                 diffWorker.once('error', (error) => {
                     reject(error);
                 });
@@ -24,9 +24,40 @@ if (isMainThread) {
 } else {
     const Diff = require('diff');
 
+    function calculateSentenceSimilarity(diff, a, b) {
+        let sameCount = 0;
+
+        let strA = '',
+            strB = '';
+
+        diff.forEach((part) => {
+            if (part.removed) {
+                // 被移除的，属于左边
+                strA += part.value;
+            } else if (part.added) {
+                // 新增的，属于右边
+                strB += part.value;
+            } else {
+                // 两边相同的部分
+                sameCount += part.value.length;
+
+                strA += `<b>${part.value}</b>`;
+                strB += `<b>${part.value}</b>`;
+            }
+        });
+
+        return {
+            a: strA.replaceAll('</b><b>', ''),
+            b: strB.replaceAll('</b><b>', ''),
+            similarity: sameCount / Math.max(a.length, b.length),
+        };
+    }
+
     parentPort.on('message', ({ a, b }) => {
         const diff = Diff.diffWords(a, b);
 
-        parentPort.postMessage(diff);
+        const res = calculateSentenceSimilarity(diff, a, b);
+
+        parentPort.postMessage(res);
     });
 }
