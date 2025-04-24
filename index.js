@@ -7,8 +7,6 @@ const CacheFile = require('./utils/CacheFile.js');
 
 class BidComparator {
     constructor() {
-        this.results = [];
-
         this.bidDocsMatrix = [];
 
         this.textComparator = null;
@@ -55,7 +53,8 @@ class BidComparator {
             await this.across(bidFiles);
         }
 
-        const groupid = uuidv4();
+        const GROUPID = uuidv4(),
+            RESULT = [];
 
         for (let i = 0; i < this.bidDocsMatrix.length; i++) {
             let { id, files } = this.bidDocsMatrix[i];
@@ -72,20 +71,24 @@ class BidComparator {
             // 进行比对
             const result = await this.compareBids(files[0], files[1], id);
 
-            result.groupid = groupid;
+            result.groupid = GROUPID;
 
-            this.results.push(result);
+            RESULT.push(result);
         }
 
-        CacheFile.saveResult(this.results, groupid);
+        CacheFile.saveResult(RESULT, GROUPID);
 
-        return this.results;
+        return RESULT;
     }
 
     async compareBids(bidA, bidB, id) {
-        const textSimilarities = await this.textComparator.findSimilarities(bidA.texts, bidB.texts);
+        const startTime = new Date().getTime();
 
+        const textSimilarities = await this.textComparator.findSimilarities(bidA.texts, bidB.texts);
         const imageMatches = await ImageComparator.compareImages(bidA.images, bidB.images);
+        const metadataMatches = this.compareMetadata(bidA.metadata, bidB.metadata);
+
+        const endTime = new Date().getTime();
 
         return {
             groupid: '',
@@ -94,8 +97,20 @@ class BidComparator {
             files: [bidA.filePath, bidB.filePath],
             textSimilarities,
             imageMatches,
-            metadataMatches: this.compareMetadata(bidA.metadata, bidB.metadata),
-            addtime: new Date().getTime(),
+            metadataMatches,
+            starttime: startTime,
+            addtime: endTime,
+            duration: endTime - startTime,
+            settings: {
+                text: {
+                    threshold: this.textComparator.options.threshold,
+                    minLength: this.textComparator.options.minLength,
+                },
+                image: {
+                    similarity: ImageComparator.SIMILARITY,
+                    resizeWidth: ImageComparator.RESIZE.width,
+                },
+            },
         };
     }
 
