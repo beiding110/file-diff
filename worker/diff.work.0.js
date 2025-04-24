@@ -1,22 +1,22 @@
 const { Worker, parentPort, workerData, isMainThread } = require('worker_threads');
 
 if (isMainThread) {
-    const diffWorker = new Worker(__filename);
+    const worker = new Worker(__filename);
+
+    worker.once('error', (error) => {
+        console.error(error);
+    });
 
     module.exports = {
         diffWords({ a, b }) {
             return new Promise((resolve, reject) => {
-                diffWorker.postMessage({
+                worker.postMessage({
                     a,
                     b,
                 });
 
-                diffWorker.once('message', (diff) => {
+                worker.once('message', (diff) => {
                     resolve(diff);
-                });
-
-                diffWorker.once('error', (error) => {
-                    reject(error);
                 });
             });
         },

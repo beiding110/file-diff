@@ -3,6 +3,10 @@ const { Worker, parentPort, workerData, isMainThread } = require('worker_threads
 if (isMainThread) {
     const worker = new Worker(__filename);
 
+    worker.once('error', (error) => {
+        console.error(error);
+    });
+
     module.exports = {
         compareImg({ imgA, imgB, resize }) {
             return new Promise((resolve, reject) => {
@@ -14,10 +18,6 @@ if (isMainThread) {
 
                 worker.once('message', (diff) => {
                     resolve(diff);
-                });
-
-                worker.once('error', (error) => {
-                    reject(error);
                 });
             });
         },
