@@ -63,7 +63,7 @@ class TextComparator {
             let allBiddingTextsNotSimilarToTextIem = true;
 
             for (let { text: biddingText } of biddingTexts) {
-                const { similarity } = await diffWords({ a: biddingText, b: bidText });
+                const { similarity } = await diffWords0({ a: biddingText, b: bidText });
 
                 if (similarity >= this.options.threshold) {
                     // 只要投标文件中有任意句段与招标文件中的任意句段相似，则直接列入带比较列队，同时不再与剩余招标文件中的句段继续比对
