@@ -32,11 +32,11 @@ updateSettings({
 comparator
     .processFiles(
         [
-            // './docs/g2-1.pdf',
+            './docs/g2-1.pdf',
             './docs/g2-2.pdf',
-            './docs/g2-3.pdf',
-        ]
-        // './docs/g2-exclude.pdf'
+            // './docs/g2-3.pdf',
+        ],
+        './docs/g2-exclude.pdf'
     )
     .then((res) => {
         console.log(res);
