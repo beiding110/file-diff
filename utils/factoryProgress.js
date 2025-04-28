@@ -1,5 +1,9 @@
 // 调用进度条
 module.exports = function factoryProgress(total, cb) {
+    if (!total) {
+        return cb(1, '0 / 0');
+    }
+
     let current = 0;
 
     let lastTime = 0;
