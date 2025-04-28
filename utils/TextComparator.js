@@ -1,9 +1,23 @@
-const { diffWords: diffWords0 } = require('../worker/diff.work.0.js');
-const { diffWords: diffWords1 } = require('../worker/diff.work.1.js');
-const { diffWords: diffWords2 } = require('../worker/diff.work.2.js');
-const { diffWords: diffWords3 } = require('../worker/diff.work.3.js');
-const { diffWords: diffWords4 } = require('../worker/diff.work.4.js');
-const { diffWords: diffWords5 } = require('../worker/diff.work.5.js');
+const { diffWords: diffWords0 } = require('../worker/diff.worker.0.js');
+const { diffWords: diffWords1 } = require('../worker/diff.worker.1.js');
+const { diffWords: diffWords2 } = require('../worker/diff.worker.2.js');
+const { diffWords: diffWords3 } = require('../worker/diff.worker.3.js');
+const { diffWords: diffWords4 } = require('../worker/diff.worker.4.js');
+const { diffWords: diffWords5 } = require('../worker/diff.worker.5.js');
+const { diffWords: diffWords6 } = require('../worker/diff.worker.6.js');
+const { diffWords: diffWords7 } = require('../worker/diff.worker.7.js');
+const { diffWords: diffWords8 } = require('../worker/diff.worker.8.js');
+const { diffWords: diffWords9 } = require('../worker/diff.worker.9.js');
+const { diffWords: diffWords10 } = require('../worker/diff.worker.10.js');
+const { diffWords: diffWords11 } = require('../worker/diff.worker.11.js');
+const { diffWords: diffWords12 } = require('../worker/diff.worker.12.js');
+const { diffWords: diffWords13 } = require('../worker/diff.worker.13.js');
+const { diffWords: diffWords14 } = require('../worker/diff.worker.14.js');
+const { diffWords: diffWords15 } = require('../worker/diff.worker.15.js');
+const { diffWords: diffWords16 } = require('../worker/diff.worker.16.js');
+const { diffWords: diffWords17 } = require('../worker/diff.worker.17.js');
+const { diffWords: diffWords18 } = require('../worker/diff.worker.18.js');
+const { diffWords: diffWords19 } = require('../worker/diff.worker.19.js');
 
 const factoryProgress = require('./factoryProgress.js');
 const WorkerMultiThreading = require('./WorkerMultiThreading.js');
@@ -16,6 +30,20 @@ workerMultiThreading.register(diffWords2);
 workerMultiThreading.register(diffWords3);
 workerMultiThreading.register(diffWords4);
 workerMultiThreading.register(diffWords5);
+workerMultiThreading.register(diffWords6);
+workerMultiThreading.register(diffWords7);
+workerMultiThreading.register(diffWords8);
+workerMultiThreading.register(diffWords9);
+workerMultiThreading.register(diffWords10);
+workerMultiThreading.register(diffWords11);
+workerMultiThreading.register(diffWords12);
+workerMultiThreading.register(diffWords13);
+workerMultiThreading.register(diffWords14);
+workerMultiThreading.register(diffWords15);
+workerMultiThreading.register(diffWords16);
+workerMultiThreading.register(diffWords17);
+workerMultiThreading.register(diffWords18);
+workerMultiThreading.register(diffWords19);
 
 class TextComparator {
     constructor(biddingContent, options = {}) {
