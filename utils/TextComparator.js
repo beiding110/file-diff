@@ -55,6 +55,8 @@ class TextComparator {
             ...options,
         };
 
+        // 移除招标文件内容进度
+        this.removeProgressHandler = null;
         // 对比进度
         this.progressHandler = null;
     }
@@ -68,8 +70,10 @@ class TextComparator {
             return textItem.text.length >= this.options.minLength;
         });
 
-        const cleanA = await this.removeBiddingContent(sentencesA);
-        const cleanB = await this.removeBiddingContent(sentencesB);
+        let progress = factoryProgress(sentencesA.length + sentencesB.length, this.removeProgressHandler);
+        
+        const cleanA = await this.removeBiddingContent(sentencesA, progress);
+        const cleanB = await this.removeBiddingContent(sentencesB, progress);
 
         const result = await this.compareTexts(cleanA, cleanB);
 
@@ -77,7 +81,7 @@ class TextComparator {
     }
 
     // 清除投标文件中，招标文件部分
-    async removeBiddingContent(texts) {
+    async removeBiddingContent(texts, progress) {
         if (!this.biddingContent) {
             return texts;
         }
@@ -104,6 +108,8 @@ class TextComparator {
             if (allBiddingTextsNotSimilarToTextIem) {
                 clearedArr.push(textItem);
             }
+
+            progress && progress();
         }
 
         return clearedArr;

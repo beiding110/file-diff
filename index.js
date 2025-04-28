@@ -59,11 +59,17 @@ class BidComparator {
         for (let i = 0; i < this.bidDocsMatrix.length; i++) {
             let { id, files } = this.bidDocsMatrix[i];
 
-            // 进度
+            // 排除招标文件内容进度回调
+            if (this.textCompareRemoveProgressHandlerFactory) {
+                this.textComparator.removeProgressHandler = this.textCompareRemoveProgressHandlerFactory(id);
+            }
+
+            // 文字对比进度回调
             if (this.textCompareProgressHandlerFactory) {
                 this.textComparator.progressHandler = this.textCompareProgressHandlerFactory(id);
             }
 
+            // 图片对比进度回调
             if (this.imageCompareProgressHandlerFactory) {
                 ImageComparator.processHandler = this.imageCompareProgressHandlerFactory(id);
             }
