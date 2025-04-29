@@ -14,6 +14,10 @@ class WorkerMultiThreading {
         });
     }
 
+    logoff(num) {
+        this.worker.splice(num);
+    }
+
     handle(task) {
         return new Promise((resolve, reject) => {
             this.waiting.push({

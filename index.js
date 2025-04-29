@@ -10,6 +10,7 @@ class BidComparator {
         this.bidDocsMatrix = [];
 
         this.textComparator = null;
+        this.imageComparator = null;
     }
 
     static preload(file) {
@@ -41,13 +42,15 @@ class BidComparator {
     }
 
     async processFiles(bidFiles, biddingFile) {
-        if (biddingFile) {
-            const biddingDoc = await parsePDF(biddingFile);
+        let biddingDoc = null;
 
-            this.textComparator = new TextComparator(biddingDoc, _STORE_SETTINGS_TEXT);
-        } else {
-            this.textComparator = new TextComparator(null, _STORE_SETTINGS_TEXT);
+        if (biddingFile) {
+            biddingDoc = await parsePDF(biddingFile);
         }
+
+        this.textComparator = new TextComparator(biddingDoc, _STORE_SETTINGS_TEXT);
+
+        this.imageComparator = new ImageComparator(_STORE_SETTINGS_IMAGE);
 
         if (!this.bidDocsMatrix.length) {
             await this.across(bidFiles);
@@ -71,7 +74,7 @@ class BidComparator {
 
             // 图片对比进度回调
             if (this.imageCompareProgressHandlerFactory) {
-                ImageComparator.processHandler = this.imageCompareProgressHandlerFactory(id);
+                this.imageComparator.processHandler = this.imageCompareProgressHandlerFactory(id);
             }
 
             // 进行比对
@@ -91,7 +94,7 @@ class BidComparator {
         const startTime = new Date().getTime();
 
         const textSimilarities = await this.textComparator.findSimilarities(bidA.texts, bidB.texts);
-        const imageMatches = await ImageComparator.compareImages(bidA.images, bidB.images);
+        const imageMatches = await this.imageComparator.compareImages(bidA.images, bidB.images);
         const metadataMatches = this.compareMetadata(bidA.metadata, bidB.metadata);
 
         const endTime = new Date().getTime();
@@ -113,8 +116,8 @@ class BidComparator {
                     minLength: this.textComparator.options.minLength,
                 },
                 image: {
-                    similarity: ImageComparator.SIMILARITY,
-                    resizeWidth: ImageComparator.RESIZE.width,
+                    similarity: this.imageComparator.options.similarity,
+                    resizeWidth: this.imageComparator.options.resize.width,
                 },
             },
         };
@@ -159,15 +162,16 @@ class BidComparator {
     }
 }
 
-// 文字对比的设置缓存，在实例化时传入
+// 对比的设置缓存，在实例化时传入
 const _STORE_SETTINGS_TEXT = {};
+const _STORE_SETTINGS_IMAGE = {};
 
 module.exports = {
     BidComparator,
     setCachePath(path) {
         CacheFile.setCachePath(path);
     },
-    updateSettings({ text, image }) {
+    updateSettings({ text, image, workers = 'multi' }) {
         if (text) {
             const { threshold, minLength } = text;
 
@@ -183,8 +187,18 @@ module.exports = {
         if (image) {
             const { similarity, resizeWidth } = image;
 
-            ImageComparator.SIMILARITY = similarity || ImageComparator.SIMILARITY;
-            ImageComparator.RESIZE.width = resizeWidth || ImageComparator.RESIZE.width;
+            if (similarity) {
+                _STORE_SETTINGS_IMAGE.similarity = similarity;
+            }
+
+            if (resizeWidth) {
+                _STORE_SETTINGS_IMAGE.resizeWidth = resizeWidth;
+            }
+        }
+
+        if (workers) {
+            TextComparator.regWorker(workers);
+            ImageComparator.regWorker(workers);
         }
     },
 };

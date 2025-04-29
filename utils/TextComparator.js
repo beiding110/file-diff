@@ -24,26 +24,39 @@ const WorkerMultiThreading = require('./WorkerMultiThreading.js');
 
 const workerMultiThreading = new WorkerMultiThreading();
 
-workerMultiThreading.register(diffWords0);
-workerMultiThreading.register(diffWords1);
-workerMultiThreading.register(diffWords2);
-workerMultiThreading.register(diffWords3);
-workerMultiThreading.register(diffWords4);
-workerMultiThreading.register(diffWords5);
-workerMultiThreading.register(diffWords6);
-workerMultiThreading.register(diffWords7);
-workerMultiThreading.register(diffWords8);
-workerMultiThreading.register(diffWords9);
-workerMultiThreading.register(diffWords10);
-workerMultiThreading.register(diffWords11);
-workerMultiThreading.register(diffWords12);
-workerMultiThreading.register(diffWords13);
-workerMultiThreading.register(diffWords14);
-workerMultiThreading.register(diffWords15);
-workerMultiThreading.register(diffWords16);
-workerMultiThreading.register(diffWords17);
-workerMultiThreading.register(diffWords18);
-workerMultiThreading.register(diffWords19);
+function regWorker(type = 'multi') {
+    if (!workerMultiThreading.worker.length) {
+        workerMultiThreading.register(diffWords0);
+    }
+
+    if (type === 'multi' && workerMultiThreading.worker.length === 1) {
+        workerMultiThreading.register(diffWords1);
+        workerMultiThreading.register(diffWords2);
+        workerMultiThreading.register(diffWords3);
+        workerMultiThreading.register(diffWords4);
+        workerMultiThreading.register(diffWords5);
+        workerMultiThreading.register(diffWords6);
+        workerMultiThreading.register(diffWords7);
+        workerMultiThreading.register(diffWords8);
+        workerMultiThreading.register(diffWords9);
+        workerMultiThreading.register(diffWords10);
+        workerMultiThreading.register(diffWords11);
+        workerMultiThreading.register(diffWords12);
+        workerMultiThreading.register(diffWords13);
+        workerMultiThreading.register(diffWords14);
+        workerMultiThreading.register(diffWords15);
+        workerMultiThreading.register(diffWords16);
+        workerMultiThreading.register(diffWords17);
+        workerMultiThreading.register(diffWords18);
+        workerMultiThreading.register(diffWords19);
+    }
+
+    if (type === 'single' && workerMultiThreading.worker.length > 1) {
+        workerMultiThreading.logoff(1);
+    }
+}
+
+regWorker('multi');
 
 class TextComparator {
     constructor(biddingContent, options = {}) {
@@ -61,6 +74,8 @@ class TextComparator {
         this.progressHandler = null;
     }
 
+    static regWorker = regWorker;
+
     async findSimilarities(textsA, textsB) {
         const sentencesA = textsA.filter((textItem) => {
             return textItem.text.length >= this.options.minLength;
@@ -71,7 +86,7 @@ class TextComparator {
         });
 
         let progress = factoryProgress(sentencesA.length + sentencesB.length, this.removeProgressHandler);
-        
+
         const cleanA = await this.removeBiddingContent(sentencesA, progress);
         const cleanB = await this.removeBiddingContent(sentencesB, progress);
 
