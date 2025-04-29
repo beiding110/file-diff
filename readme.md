@@ -62,6 +62,7 @@ updateSettings({
         similarity: 0.9, // 相似程度阈值
         resizeWidth: 100, // 对比时统一尺寸
     },
+    workers: 'multi', // 'single'时，为锁定单线程检测
 });
 
 // 进行对比
