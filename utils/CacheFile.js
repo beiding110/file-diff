@@ -32,6 +32,10 @@ class CacheFile {
         DIR_PATH = path;
     }
 
+    static getCachePath() {
+        return DIR_PATH;
+    }
+
     /**
      * promise
      * @param filePath

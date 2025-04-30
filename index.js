@@ -1,9 +1,21 @@
 const { v4: uuidv4 } = require('uuid');
 
-const parsePDF = require('./utils/parsePDF.js');
+const { parsePDF: parsePDF0, setCachePath: setCachePath0 } = require('./worker/parsePDF.worker.0.js');
+const { parsePDF: parsePDF1, setCachePath: setCachePath1 } = require('./worker/parsePDF.worker.1.js');
+const { parsePDF: parsePDF2, setCachePath: setCachePath2 } = require('./worker/parsePDF.worker.2.js');
+const { parsePDF: parsePDF3, setCachePath: setCachePath3 } = require('./worker/parsePDF.worker.3.js');
+
 const TextComparator = require('./utils/TextComparator.js');
 const ImageComparator = require('./utils/ImageComparator.js');
 const CacheFile = require('./utils/CacheFile.js');
+const WorkerMultiThreading = require('./utils/WorkerMultiThreading.js');
+
+const workerMultiThreading = new WorkerMultiThreading();
+
+workerMultiThreading.register(parsePDF0);
+workerMultiThreading.register(parsePDF1);
+workerMultiThreading.register(parsePDF2);
+workerMultiThreading.register(parsePDF3);
 
 class BidComparator {
     constructor() {
@@ -14,7 +26,7 @@ class BidComparator {
     }
 
     static preload(file) {
-        return parsePDF(file);
+        return workerMultiThreading.handle(file);
     }
 
     static history(file) {
@@ -22,7 +34,9 @@ class BidComparator {
     }
 
     async across(bidFiles) {
-        const bidDocs = await Promise.all(bidFiles.map(parsePDF));
+        const bidDocs = await Promise.all(bidFiles.map(file => {
+            return workerMultiThreading.handle(file);
+        }));
 
         const matrix = [];
 
@@ -45,7 +59,7 @@ class BidComparator {
         let biddingDoc = null;
 
         if (biddingFile) {
-            biddingDoc = await parsePDF(biddingFile);
+            biddingDoc = await workerMultiThreading.handle(biddingFile);
         }
 
         this.textComparator = new TextComparator(biddingDoc, _STORE_SETTINGS_TEXT);
@@ -170,6 +184,11 @@ module.exports = {
     BidComparator,
     setCachePath(path) {
         CacheFile.setCachePath(path);
+
+        setCachePath0(path);
+        setCachePath1(path);
+        setCachePath2(path);
+        setCachePath3(path);
     },
     updateSettings({ text, image, workers = 'multi' }) {
         if (text) {
