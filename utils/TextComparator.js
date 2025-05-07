@@ -21,6 +21,7 @@ const { diffWords: diffWords19 } = require('../worker/diff.worker.19.js');
 
 const factoryProgress = require('./factoryProgress.js');
 const WorkerMultiThreading = require('./WorkerMultiThreading.js');
+const { log } = require('./log.js');
 
 const workerMultiThreading = new WorkerMultiThreading();
 
@@ -143,6 +144,8 @@ class TextComparator {
     async compareTexts(sentencesA, sentencesB) {
         const threadList = [];
 
+        log('TextComparator.js', 'compareTexts', '即将生成任务列队');
+
         // 构建任务列表
         // todo: 保证列队中不超过100个
         for (let pa of sentencesA) {
@@ -161,8 +164,12 @@ class TextComparator {
             }
         }
 
+        log('TextComparator.js', 'compareTexts', '生成任务列队完毕：', threadList.length);
+
         // 构建进度回调
         let progress = factoryProgress(threadList.length, this.progressHandler);
+
+        log('TextComparator.js', 'compareTexts', '开始对比文字');
 
         // 处理任务
         const result = await Promise.all(
@@ -194,6 +201,8 @@ class TextComparator {
                 });
             })
         );
+
+        log('TextComparator.js', 'compareTexts', '对比文字完毕：', result.length);
 
         return result.filter((item) => item);
     }

@@ -21,6 +21,7 @@ const { compareImg: compareImg19 } = require('../worker/sharp.worker.19.js');
 
 const factoryProgress = require('./factoryProgress.js');
 const WorkerMultiThreading = require('./WorkerMultiThreading.js');
+const { log } = require('./log.js');
 
 const workerMultiThreading = new WorkerMultiThreading();
 
@@ -74,6 +75,8 @@ class ImageComparator {
     async compareImages(bidA, bidB) {
         const threadList = [];
 
+        log('ImageComparator.js', 'compareImages', '即将生成任务列队');
+
         // 构建任务列表
         // todo: 保证列队中不超过100个
         for (const imgA of bidA) {
@@ -108,8 +111,12 @@ class ImageComparator {
             }
         }
 
+        log('ImageComparator.js', 'compareImages', '生成任务列队完毕：', threadList.length);
+
         // 构建进度回调
         let progress = factoryProgress(threadList.length, this.processHandler);
+
+        log('ImageComparator.js', 'compareImages', '开始对比图片');
 
         // 处理任务
         const result = await Promise.all(
@@ -131,6 +138,8 @@ class ImageComparator {
                 });
             })
         );
+
+        log('ImageComparator.js', 'compareImages', '对比图片结束：', result.length);
 
         return result.filter((item) => item);
     }

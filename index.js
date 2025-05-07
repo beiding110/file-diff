@@ -9,6 +9,7 @@ const TextComparator = require('./utils/TextComparator.js');
 const ImageComparator = require('./utils/ImageComparator.js');
 const CacheFile = require('./utils/CacheFile.js');
 const WorkerMultiThreading = require('./utils/WorkerMultiThreading.js');
+const { log } = require('./utils/log.js');
 
 const workerMultiThreading = new WorkerMultiThreading();
 
@@ -66,6 +67,8 @@ class BidComparator {
 
         this.bidDocsMatrix = matrix;
 
+        log('index.js', 'across', '投标文件对比矩阵:', matrix.length, '个');
+
         return matrix;
     }
 
@@ -112,6 +115,8 @@ class BidComparator {
             // 进行比对
             const result = await this.compareBids(fileL, fileR, id);
 
+            log('index.js', 'processFiles', '对比完毕');
+
             result.groupid = GROUPID;
 
             RESULT.push(result);
@@ -125,9 +130,21 @@ class BidComparator {
     async compareBids(bidA, bidB, id) {
         const startTime = new Date().getTime();
 
+        log('index.js', 'compareBids', '即将开始对比文字:', bidA.fileName, bidB.fileName);
+
         const textSimilarities = await this.textComparator.findSimilarities(bidA.texts, bidB.texts);
+
+        log('index.js', 'compareBids', '文字对比结束：', textSimilarities.length);
+        log('index.js', 'compareBids', '即将开始对比图片：:', bidA.fileName, bidB.fileName);
+
         const imageMatches = await this.imageComparator.compareImages(bidA.images, bidB.images);
+
+        log('index.js', 'compareBids', '图片对比结束：', imageMatches.length);
+        log('index.js', 'compareBids', '即将开始对比属性：:', bidA.fileName, bidB.fileName);
+
         const metadataMatches = this.compareMetadata(bidA.metadata, bidB.metadata);
+
+        log('index.js', 'compareBids', '属性对比结束');
 
         const endTime = new Date().getTime();
 
