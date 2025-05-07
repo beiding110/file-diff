@@ -34,18 +34,32 @@ class BidComparator {
     }
 
     async across(bidFiles) {
-        const bidDocs = await Promise.all(bidFiles.map(file => {
-            return workerMultiThreading.handle(file);
-        }));
+        const bidDocs = await Promise.all(
+            bidFiles.map((file) => {
+                return workerMultiThreading.handle(file);
+            })
+        );
 
         const matrix = [];
 
         // 两两对比投标文件
         for (let i = 0; i < bidDocs.length; i++) {
             for (let j = i + 1; j < bidDocs.length; j++) {
+                const fileL = bidDocs[i],
+                    fileR = bidDocs[j];
+
                 matrix.push({
                     id: uuidv4(),
-                    files: [bidDocs[i], bidDocs[j]],
+                    files: [
+                        {
+                            fileName: fileL.fileName,
+                            fileHash: fileL.fileHash,
+                        },
+                        {
+                            fileName: fileR.fileName,
+                            fileHash: fileR.fileHash,
+                        },
+                    ],
                 });
             }
         }
@@ -91,8 +105,12 @@ class BidComparator {
                 this.imageComparator.processHandler = this.imageCompareProgressHandlerFactory(id);
             }
 
+            // 读取完整解析结果
+            const fileL = CacheFile.readCacheByHash(files[0].fileHash),
+                fileR = CacheFile.readCacheByHash(files[1].fileHash);
+
             // 进行比对
-            const result = await this.compareBids(files[0], files[1], id);
+            const result = await this.compareBids(fileL, fileR, id);
 
             result.groupid = GROUPID;
 

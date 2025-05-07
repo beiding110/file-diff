@@ -74,6 +74,8 @@ class ImageComparator {
         const threadList = [];
 
         // 构建任务列表
+        // todo: 先过滤一遍，长度相差太多就过滤掉
+        // todo: 保证列队中不超过100个
         for (const imgA of bidA) {
             for (const imgB of bidB) {
                 let { image: imageA, pageNumber: pageNumberA } = imgA;

@@ -36,6 +36,18 @@ class CacheFile {
         return DIR_PATH;
     }
 
+    static readCacheByHash(hash) {
+        let parseFilePath = path.join(DIR_PATH, FILE_FOLDER_PATH, `./${hash}`, PARSE_FILE_NAME);
+
+        if (fs.existsSync(parseFilePath)) {
+            let context = fs.readFileSync(parseFilePath);
+
+            return JSON.parse(context);
+        }
+
+        return false;
+    }
+
     /**
      * promise
      * @param filePath
@@ -158,16 +170,19 @@ class CacheFile {
 
         const { path: fileFolderPath } = this.checkFilePath();
 
-        const targetPath = path.join(fileFolderPath, PDF_FILE_NAME);
+        const pdfPath = path.join(fileFolderPath, PDF_FILE_NAME);
 
-        if (this.checkFileExist(targetPath)) {
+        if (this.checkFileExist(pdfPath)) {
             // 已经存在，则不进行重新存放
-            return targetPath;
+            return pdfPath;
         }
 
-        fs.writeFileSync(targetPath, fs.readFileSync(fromFileUrl));
+        fs.writeFileSync(pdfPath, fs.readFileSync(fromFileUrl));
 
-        return targetPath;
+        return {
+            pdfPath,
+            hash: this.hash,
+        };
     }
 
     // 将图片保存至对应目录

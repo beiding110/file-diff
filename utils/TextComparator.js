@@ -110,7 +110,7 @@ class TextComparator {
             let allBiddingTextsNotSimilarToTextIem = true;
 
             for (let { text: biddingText } of biddingTexts) {
-                const { similarity } = await diffWords0({ a: biddingText, b: bidText });
+                const { similarity } = await workerMultiThreading.handle({ a: biddingText, b: bidText });
 
                 if (similarity >= this.options.threshold) {
                     // 只要投标文件中有任意句段与招标文件中的任意句段相似，则直接列入带比较列队，同时不再与剩余招标文件中的句段继续比对
@@ -134,6 +134,8 @@ class TextComparator {
         const threadList = [];
 
         // 构建任务列表
+        // todo: 先过滤一遍，长度相差太多就过滤掉
+        // todo: 保证列队中不超过100个
         for (let pa of sentencesA) {
             for (let pb of sentencesB) {
                 threadList.push({ a: pa.text, b: pb.text, pageA: pa.pageNumber, pageB: pb.pageNumber });

@@ -40,7 +40,7 @@ module.exports = function (thisFileName) {
             var cacheFile = new CacheFile();
 
             // 缓存pdf文档
-            const pdfPath = await cacheFile.savePdf(filePath);
+            const { pdfPath, hash } = await cacheFile.savePdf(filePath);
 
             // 先检查缓存
             const cache = cacheFile.checkIsCached();
@@ -71,6 +71,7 @@ module.exports = function (thisFileName) {
             const resloved = {
                 fileName: path.basename(filePath),
                 filePath: pdfPath,
+                fileHash: hash,
                 metadata: metadata.info,
                 texts,
                 images,
