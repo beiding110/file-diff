@@ -110,6 +110,16 @@ class TextComparator {
             let allBiddingTextsNotSimilarToTextIem = true;
 
             for (let { text: biddingText } of biddingTexts) {
+                const lengthRatio = biddingText.length / bidText.length;
+
+                // 先过滤一遍，长度相差太多就过滤掉
+                if (
+                    lengthRatio < this.options.threshold 
+                    || lengthRatio > (2 - this.options.threshold)
+                ) {
+                    continue;
+                }
+
                 const { similarity } = await workerMultiThreading.handle({ a: biddingText, b: bidText });
 
                 if (similarity >= this.options.threshold) {
@@ -134,10 +144,19 @@ class TextComparator {
         const threadList = [];
 
         // 构建任务列表
-        // todo: 先过滤一遍，长度相差太多就过滤掉
         // todo: 保证列队中不超过100个
         for (let pa of sentencesA) {
             for (let pb of sentencesB) {
+                const lengthRatio = pa.text.length / pb.text.length;
+
+                // 先过滤一遍，长度相差太多就过滤掉
+                if (
+                    lengthRatio < this.options.threshold 
+                    || lengthRatio > (2 - this.options.threshold)
+                ) {
+                    continue;
+                }
+
                 threadList.push({ a: pa.text, b: pb.text, pageA: pa.pageNumber, pageB: pb.pageNumber });
             }
         }

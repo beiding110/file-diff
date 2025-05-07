@@ -59,10 +59,11 @@ function regWorker(type = 'multi') {
 regWorker('multi');
 
 class ImageComparator {
-    constructor({ similarity = 0.9, resizeWidth = 300 }) {
+    constructor({ similarity = 0.9, resizeWidth = 300, minSize = 100 }) {
         this.options = {
             similarity,
             resize: { width: resizeWidth },
+            minSize,
         };
 
         this.processHandler = null;
@@ -74,12 +75,28 @@ class ImageComparator {
         const threadList = [];
 
         // 构建任务列表
-        // todo: 先过滤一遍，长度相差太多就过滤掉
         // todo: 保证列队中不超过100个
         for (const imgA of bidA) {
             for (const imgB of bidB) {
-                let { image: imageA, pageNumber: pageNumberA } = imgA;
-                let { image: imageB, pageNumber: pageNumberB } = imgB;
+                let { image: imageA, pageNumber: pageNumberA, width: widthA, height: heightA, } = imgA;
+                let { image: imageB, pageNumber: pageNumberB, width: widthB, height: heightB, } = imgB;
+
+                if (
+                    widthA < this.options.minSize 
+                    || heightA < this.options.minSize
+                    || widthB < this.options.minSize
+                    || heightB < this.options.minSize
+                ) {
+                    // 图片尺寸小于最小尺寸，跳过
+                    continue;
+                }
+
+                const sizeRatio = (heightA / widthA) / (heightB / widthB);
+                
+                if (sizeRatio < this.options.similarity || sizeRatio < (2 - this.options.similarity)) {
+                    // 尺寸比例相差过大，跳过
+                    continue;
+                }
 
                 threadList.push({
                     imgA: imageA,
