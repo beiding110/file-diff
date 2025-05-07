@@ -21,6 +21,7 @@ const { compareImg: compareImg19 } = require('../worker/sharp.worker.19.js');
 
 const factoryProgress = require('./factoryProgress.js');
 const WorkerMultiThreading = require('./WorkerMultiThreading.js');
+const smartChunkProcessor = require('./SmartChunkProcessor.js');
 const { log } = require('./log.js');
 
 const workerMultiThreading = new WorkerMultiThreading();
@@ -119,7 +120,7 @@ class ImageComparator {
         log('ImageComparator.js', 'compareImages', '开始对比图片');
 
         // 处理任务
-        const result = await Promise.all(
+        const result = await smartChunkProcessor.process(
             threadList.map((threadItem) => {
                 return new Promise((resolve) => {
                     workerMultiThreading.handle(threadItem).then((similarity) => {

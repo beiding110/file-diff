@@ -21,6 +21,7 @@ const { diffWords: diffWords19 } = require('../worker/diff.worker.19.js');
 
 const factoryProgress = require('./factoryProgress.js');
 const WorkerMultiThreading = require('./WorkerMultiThreading.js');
+const smartChunkProcessor = require('./SmartChunkProcessor.js');
 const { log } = require('./log.js');
 
 const workerMultiThreading = new WorkerMultiThreading();
@@ -172,7 +173,7 @@ class TextComparator {
         log('TextComparator.js', 'compareTexts', '开始对比文字');
 
         // 处理任务
-        const result = await Promise.all(
+        const result = await smartChunkProcessor.process(
             threadList.map((threadItem) => {
                 return new Promise((resolve) => {
                     workerMultiThreading.handle(threadItem).then(({ a, b, similarity }) => {
