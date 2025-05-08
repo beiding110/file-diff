@@ -167,6 +167,7 @@ class BidComparator {
                 image: {
                     similarity: this.imageComparator.options.similarity,
                     resizeWidth: this.imageComparator.options.resize.width,
+                    minSize: this.imageComparator.options.minSize,
                 },
             },
         };
