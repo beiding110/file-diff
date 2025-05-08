@@ -239,7 +239,7 @@ module.exports = {
         }
 
         if (image) {
-            const { similarity, resizeWidth } = image;
+            const { similarity, resizeWidth, minSize } = image;
 
             if (similarity) {
                 _STORE_SETTINGS_IMAGE.similarity = similarity;
@@ -247,6 +247,10 @@ module.exports = {
 
             if (resizeWidth) {
                 _STORE_SETTINGS_IMAGE.resizeWidth = resizeWidth;
+            }
+
+            if (minSize) {
+                _STORE_SETTINGS_IMAGE.minSize = minSize;
             }
         }
 
