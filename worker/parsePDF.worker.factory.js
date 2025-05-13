@@ -2,12 +2,14 @@ module.exports = function (thisFileName) {
     const { Worker, parentPort, workerData, isMainThread } = require('worker_threads');
 
     if (isMainThread) {
+        const { log } = require('../utils/log.js');
+
         const worker = new Worker(thisFileName, {
             workerData: '',
         });
 
-        worker.once('error', (error) => {
-            console.error(error);
+        worker.on('error', (error) => {
+            log(error);
         });
 
         return {
@@ -30,30 +32,50 @@ module.exports = function (thisFileName) {
                     args: [path],
                 });
             },
+            setCustomLogHandler({ path, funName }) {
+                worker.postMessage({
+                    type: 'setCustomLogHandler',
+                    args: [path, funName],
+                });
+            },
         };
     } else {
         const path = require('path');
-        const CacheFile = require('../utils/CacheFile.js');
         const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.mjs');
 
+        const CacheFile = require('../utils/CacheFile.js');
+        const { log, setCustomHandler } = require('../utils/log.js');
+
         async function parsePDF(filePath) {
+            log('parsePDF.worker.factory.js', 'parsePDF', '开始解析PDF文件：', filePath);
+
             var cacheFile = new CacheFile();
 
             // 缓存pdf文档
+            log('parsePDF.worker.factory.js', 'parsePDF', '开始缓存PDF文件');
+
             const { pdfPath, hash } = await cacheFile.savePdf(filePath);
 
             // 先检查缓存
+            log('parsePDF.worker.factory.js', 'parsePDF', '开始检查解析缓存是否存在');
+
             const cache = cacheFile.checkIsCached();
 
             if (cache) {
+                log('parsePDF.worker.factory.js', 'parsePDF', '存在解析结果缓存，直接返回缓存结果：', filePath);
+
                 return cache;
             }
+
+            log('parsePDF.worker.factory.js', 'parsePDF', '不存在解析结果缓存，开始解析PDF文件');
 
             const pdf = await pdfjsLib.getDocument(filePath).promise;
             const metadata = await pdf.getMetadata();
 
             let texts = [];
             let images = [];
+
+            log('parsePDF.worker.factory.js', 'parsePDF', '开始逐页解析PDF文件');
 
             for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
                 const page = await pdf.getPage(pageNumber);
@@ -68,6 +90,8 @@ module.exports = function (thisFileName) {
                 images = [...images, ...pageImages];
             }
 
+            log('parsePDF.worker.factory.js', 'parsePDF', '逐页解析PDF文件完毕');
+
             const resloved = {
                 fileName: path.basename(filePath),
                 filePath: pdfPath,
@@ -77,17 +101,31 @@ module.exports = function (thisFileName) {
                 images,
             };
 
+            log('parsePDF.worker.factory.js', 'parsePDF', '开始缓存解析结果');
+
             // 缓存文件解析后的信息
             await cacheFile.saveParseInfo(resloved);
+
+            log('parsePDF.worker.factory.js', 'parsePDF', '缓存解析结果完毕', filePath);
 
             return resloved;
         }
 
         async function _getPageTexts({ page, viewport, pageNumber, cacheFile }) {
+            log('parsePDF.worker.factory.js', '_getPageTexts', '开始解析页面文字：', pageNumber);
+
             const textContent = await page.getTextContent();
             // 按字体划分后的句组
+            log('parsePDF.worker.factory.js', '_getPageTexts', '文字按字体分组');
             const fontGroups = _groupDifferentFonts(textContent);
 
+            log(
+                'parsePDF.worker.factory.js',
+                '_getPageTexts',
+                '文字按字体分组完毕：',
+                fontGroups.length,
+                '开始按标点切割'
+            );
             let fonts = [];
 
             fontGroups.forEach((font) => {
@@ -112,11 +150,19 @@ module.exports = function (thisFileName) {
                 fonts = [...fonts, ...pageSplitByPunctuation];
             });
 
+            log('parsePDF.worker.factory.js', '_getPageTexts', '解析页面文字完毕：', fonts.length);
+
             return fonts;
         }
 
         async function _getPageImages({ page, viewport, pageNumber, cacheFile }) {
+            log('parsePDF.worker.factory.js', '_getPageImages', '开始解析页面图片：', pageNumber);
+
             const imgs = await _extractImages(page);
+
+            log('parsePDF.worker.factory.js', '_getPageImages', '获取页面内全部图片：', imgs.length);
+
+            log('parsePDF.worker.factory.js', '_getPageImages', '开始缓存图片');
 
             let images = [];
 
@@ -134,6 +180,8 @@ module.exports = function (thisFileName) {
                     viewport,
                 });
             }
+
+            log('parsePDF.worker.factory.js', '_getPageImages', '解析页面图片完毕：', images.length);
 
             return images;
         }
@@ -206,8 +254,16 @@ module.exports = function (thisFileName) {
         }
 
         async function _extractImages(page) {
-            const ops = await page.getOperatorList(),
-                { fnArray, argsArray } = ops;
+            log('parsePDF.worker.factory.js', '_extractImages', '开始获取页面内全部图片');
+
+            const { fnArray, argsArray } = await page.getOperatorList();
+
+            log(
+                'parsePDF.worker.factory.js',
+                '_extractImages',
+                'page.getOperatorList已获取全部页面操作：',
+                fnArray.length
+            );
 
             // 提取图片
             let imgs = [],
@@ -246,7 +302,13 @@ module.exports = function (thisFileName) {
                 }
             }
 
+            log('parsePDF.worker.factory.js', '_extractImages', '截取到页面内疑似图片对象：', promiseList.length);
+
             await Promise.all(promiseList.map((p) => p()));
+
+            log('parsePDF.worker.factory.js', '_extractImages', '获取到页面内图片对象：', promiseList.length);
+
+            promiseList = null;
 
             return imgs;
         }
@@ -264,6 +326,15 @@ module.exports = function (thisFileName) {
                     const path = args[0];
 
                     CacheFile.setCachePath(path);
+                },
+                async setCustomLogHandler() {
+                    const path = args[0],
+                        funName = args[1];
+
+                    const reqM = require(path);
+                    const fun = reqM[funName];
+
+                    setCustomHandler(fun);
                 },
             };
 

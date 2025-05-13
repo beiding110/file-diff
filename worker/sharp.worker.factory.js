@@ -2,10 +2,12 @@ module.exports = function(thisFileName) {
     const { Worker, parentPort, workerData, isMainThread } = require('worker_threads');
     
     if (isMainThread) {
+        const { log } = require('../utils/log.js');
+        
         const worker = new Worker(thisFileName);
     
-        worker.once('error', (error) => {
-            console.error(error);
+        worker.on('error', (error) => {
+            log(error);
         });
     
         return {

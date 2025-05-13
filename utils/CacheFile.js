@@ -1,7 +1,8 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { PNG } = require('pngjs');
+const sharp = require('sharp');
+const { log } = require('../utils/log.js');
 
 var DIR_PATH = path.join(__dirname, '../cache');
 
@@ -191,6 +192,8 @@ class CacheFile {
             console.error('请先获取文件hash');
         }
 
+        log('CacheFile.js', 'saveImage', '开始缓存图片');
+
         const { path: fileFolderPath } = this.checkFilePath();
 
         const targetPath = path.join(fileFolderPath, IMAGES_PATH);
@@ -202,52 +205,37 @@ class CacheFile {
         const fileSavePath = path.join(targetPath, `./${name}.png`);
 
         if (this.checkFileExist(fileSavePath)) {
+            log('CacheFile.js', 'saveImage', '已缓存过，直接读取');
+
             // 已经存在，则不进行重新存放
             return fileSavePath;
         }
 
         return new Promise((resolve, reject) => {
-            let newfile = new PNG({ width, height });
+            // 计算通道数，可能是3/4通道
+            let channels = data.length / width / height;
 
-            let array;
+            log('CacheFile.js', 'saveImage', '使用sharp进行缓存，通道数：', channels);
 
-            switch (data.length) {
-                case width * height * 3: {
-                    array = new Uint8ClampedArray(width * height * 4);
+            sharp(data, {
+                raw: {
+                    width,
+                    height,
+                    channels,
+                },
+            })
+                .png()
+                .toFile(fileSavePath)
+                .then(() => {
+                    log('CacheFile.js', 'saveImage', '缓存图片完毕：', fileSavePath);
 
-                    for (let index = 0; index < array.length; index++) {
-                        // Set alpha channel to full
-                        if (index % 4 === 3) {
-                            array[index] = 255;
-                        }
-                        // Copy RGB channel components from the original array
-                        else {
-                            array[index] = data[~~(index / 4) * 3 + (index % 4)];
-                        }
-                    }
+                    resolve(fileSavePath);
+                })
+                .catch((e) => {
+                    log('CacheFile.js', 'saveImage', '缓存图片失败：', e);
 
-                    break;
-                }
-                case width * height * 4: {
-                    array = data;
-                    break;
-                }
-                default: {
-                    console.error('Unknown imgData format!');
-                }
-            }
-
-            newfile.data = array;
-
-            const pipe = newfile.pack().pipe(fs.createWriteStream(fileSavePath));
-
-            pipe.on('finish', () => {
-                resolve(fileSavePath);
-            });
-
-            pipe.on('error', (e) => {
-                reject(e);
-            });
+                    reject(e);
+                });
         });
     }
 

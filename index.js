@@ -1,15 +1,31 @@
 const { v4: uuidv4 } = require('uuid');
 
-const { parsePDF: parsePDF0, setCachePath: setCachePath0 } = require('./worker/parsePDF.worker.0.js');
-const { parsePDF: parsePDF1, setCachePath: setCachePath1 } = require('./worker/parsePDF.worker.1.js');
-const { parsePDF: parsePDF2, setCachePath: setCachePath2 } = require('./worker/parsePDF.worker.2.js');
-const { parsePDF: parsePDF3, setCachePath: setCachePath3 } = require('./worker/parsePDF.worker.3.js');
+const {
+    parsePDF: parsePDF0,
+    setCachePath: setCachePath0,
+    setCustomLogHandler: setCustomLogHandler0,
+} = require('./worker/parsePDF.worker.0.js');
+const {
+    parsePDF: parsePDF1,
+    setCachePath: setCachePath1,
+    setCustomLogHandler: setCustomLogHandler1,
+} = require('./worker/parsePDF.worker.1.js');
+const {
+    parsePDF: parsePDF2,
+    setCachePath: setCachePath2,
+    setCustomLogHandler: setCustomLogHandler2,
+} = require('./worker/parsePDF.worker.2.js');
+const {
+    parsePDF: parsePDF3,
+    setCachePath: setCachePath3,
+    setCustomLogHandler: setCustomLogHandler3,
+} = require('./worker/parsePDF.worker.3.js');
 
 const TextComparator = require('./utils/TextComparator.js');
 const ImageComparator = require('./utils/ImageComparator.js');
 const CacheFile = require('./utils/CacheFile.js');
 const WorkerMultiThreading = require('./utils/WorkerMultiThreading.js');
-const { log } = require('./utils/log.js');
+const { log, setCustomHandler } = require('./utils/log.js');
 
 const workerMultiThreading = new WorkerMultiThreading();
 
@@ -225,6 +241,16 @@ module.exports = {
         setCachePath1(path);
         setCachePath2(path);
         setCachePath3(path);
+    },
+    setLogCustomHandler(handler, { path, funName }) {
+        setCustomHandler(handler);
+
+        if (path) {
+            setCustomLogHandler0({ path, funName });
+            setCustomLogHandler1({ path, funName });
+            setCustomLogHandler2({ path, funName });
+            setCustomLogHandler3({ path, funName });
+        }
     },
     updateSettings({ text, image, workers = 'multi' }) {
         if (text) {
