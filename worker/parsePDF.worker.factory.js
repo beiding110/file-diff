@@ -79,16 +79,19 @@ module.exports = function (thisFileName) {
 
             for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
                 const page = await pdf.getPage(pageNumber);
-                const viewport = page.getViewport({ scale: 1.0 });
 
                 const [pageTexts, pageImages] = await Promise.all([
-                    _getPageTexts({ page, viewport, pageNumber, cacheFile }), // 本页中文字
-                    _getPageImages({ page, viewport, pageNumber, cacheFile }), // 本页中的图片
+                    _getPageTexts({ page, pageNumber, cacheFile }), // 本页中文字
+                    _getPageImages({ page, pageNumber, cacheFile }), // 本页中的图片
                 ]);
 
                 texts = [...texts, ...pageTexts];
                 images = [...images, ...pageImages];
+
+                page.cleanup();
             }
+
+            pdf.cleanup();
 
             log('parsePDF.worker.factory.js', 'parsePDF', '逐页解析PDF文件完毕');
 
@@ -111,7 +114,7 @@ module.exports = function (thisFileName) {
             return resloved;
         }
 
-        async function _getPageTexts({ page, viewport, pageNumber, cacheFile }) {
+        async function _getPageTexts({ page, pageNumber, cacheFile }) {
             log('parsePDF.worker.factory.js', '_getPageTexts', '开始解析页面文字：', pageNumber);
 
             const textContent = await page.getTextContent();
@@ -141,7 +144,6 @@ module.exports = function (thisFileName) {
                 let page = {
                     pageNumber,
                     text,
-                    viewport,
                 };
 
                 // 将页面中的文字按标点切割
@@ -155,7 +157,7 @@ module.exports = function (thisFileName) {
             return fonts;
         }
 
-        async function _getPageImages({ page, viewport, pageNumber, cacheFile }) {
+        async function _getPageImages({ page, pageNumber, cacheFile }) {
             log('parsePDF.worker.factory.js', '_getPageImages', '开始解析页面图片：', pageNumber);
 
             const imgs = await _extractImages(page);
@@ -177,7 +179,6 @@ module.exports = function (thisFileName) {
                     image: imgPath,
                     width,
                     height,
-                    viewport,
                 });
             }
 
