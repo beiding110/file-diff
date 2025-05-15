@@ -4,21 +4,25 @@ const {
     parsePDF: parsePDF0,
     setCachePath: setCachePath0,
     setCustomLogHandler: setCustomLogHandler0,
+    setProgressHandler: setProgressHandler0,
 } = require('./worker/parsePDF.worker.0.js');
 const {
     parsePDF: parsePDF1,
     setCachePath: setCachePath1,
     setCustomLogHandler: setCustomLogHandler1,
+    setProgressHandler: setProgressHandler1,
 } = require('./worker/parsePDF.worker.1.js');
 const {
     parsePDF: parsePDF2,
     setCachePath: setCachePath2,
     setCustomLogHandler: setCustomLogHandler2,
+    setProgressHandler: setProgressHandler2,
 } = require('./worker/parsePDF.worker.2.js');
 const {
     parsePDF: parsePDF3,
     setCachePath: setCachePath3,
     setCustomLogHandler: setCustomLogHandler3,
+    setProgressHandler: setProgressHandler3,
 } = require('./worker/parsePDF.worker.3.js');
 
 const TextComparator = require('./utils/TextComparator.js');
@@ -251,6 +255,12 @@ module.exports = {
             setCustomLogHandler2({ path, funName });
             setCustomLogHandler3({ path, funName });
         }
+    },
+    setPreloadProgressHandler(handler) {
+        setProgressHandler0(handler);
+        setProgressHandler1(handler);
+        setProgressHandler2(handler);
+        setProgressHandler3(handler);
     },
     updateSettings({ text, image, workers = 'multi' }) {
         if (text) {

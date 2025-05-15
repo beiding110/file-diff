@@ -3,6 +3,7 @@ module.exports = function (thisFileName) {
 
     if (isMainThread) {
         const { log } = require('../utils/log.js');
+        const EventCenter = require('./EventCenter.js');
 
         const worker = new Worker(thisFileName, {
             workerData: '',
@@ -12,6 +13,8 @@ module.exports = function (thisFileName) {
             log(error);
         });
 
+        const eventCetner = new EventCenter(worker);
+
         return {
             parsePDF(filePath) {
                 return new Promise((resolve, reject) => {
@@ -20,22 +23,23 @@ module.exports = function (thisFileName) {
                         args: [filePath],
                     });
 
-                    worker.once('message', (res) => {
+                    eventCetner.post('parsePDF', filePath);
+
+                    eventCetner.once('parsePDF', (res) => {
                         resolve(res);
                     });
                 });
             },
             // worker中的CacheFile的全局变量和主进程中的不一样，即主进程设置的cachePath传递过来，需要手动传递一次
             setCachePath(path) {
-                worker.postMessage({
-                    type: 'setCachePath',
-                    args: [path],
-                });
+                eventCetner.post('setCachePath', path);
             },
             setCustomLogHandler({ path, funName }) {
-                worker.postMessage({
-                    type: 'setCustomLogHandler',
-                    args: [path, funName],
+                eventCetner.post('setCustomLogHandler', path, funName);
+            },
+            setProgressHandler(cb) {
+                eventCetner.on('progress', (...args) => {
+                    cb && cb(...args);
                 });
             },
         };
@@ -45,6 +49,11 @@ module.exports = function (thisFileName) {
 
         const CacheFile = require('../utils/CacheFile.js');
         const { log, setCustomHandler } = require('../utils/log.js');
+        const factoryProgress = require('../utils/factoryProgress.js');
+
+        const EventCenter = require('./EventCenter.js');
+
+        const eventCetner = new EventCenter(parentPort);
 
         async function parsePDF(filePath) {
             log('parsePDF.worker.factory.js', 'parsePDF', '开始解析PDF文件：', filePath);
@@ -72,6 +81,10 @@ module.exports = function (thisFileName) {
             const pdf = await pdfjsLib.getDocument(filePath).promise;
             const metadata = await pdf.getMetadata();
 
+            let progress = factoryProgress(pdf.numPages, (...args) => {
+                eventCetner.post('progress', filePath, ...args);
+            });
+
             let texts = [];
             let images = [];
 
@@ -89,6 +102,8 @@ module.exports = function (thisFileName) {
                 images = [...images, ...pageImages];
 
                 page.cleanup();
+
+                progress();
             }
 
             pdf.cleanup();
@@ -314,32 +329,21 @@ module.exports = function (thisFileName) {
             return imgs;
         }
 
-        parentPort.on('message', async ({ type, args }) => {
-            const switchObj = {
-                async parsePDF() {
-                    const filePath = args[0];
+        eventCetner.on('parsePDF', async (filePath) => {
+            const res = await parsePDF(filePath);
 
-                    const res = await parsePDF(filePath);
+            eventCetner.post('parsePDF', res);
+        });
 
-                    parentPort.postMessage(res);
-                },
-                async setCachePath() {
-                    const path = args[0];
+        eventCetner.on('setCachePath', (path) => {
+            CacheFile.setCachePath(path);
+        });
 
-                    CacheFile.setCachePath(path);
-                },
-                async setCustomLogHandler() {
-                    const path = args[0],
-                        funName = args[1];
+        eventCetner.on('setCustomLogHandler', (path, funName) => {
+            const reqM = require(path);
+            const fun = reqM[funName];
 
-                    const reqM = require(path);
-                    const fun = reqM[funName];
-
-                    setCustomHandler(fun);
-                },
-            };
-
-            await switchObj[type]();
+            setCustomHandler(fun);
         });
 
         return null;
