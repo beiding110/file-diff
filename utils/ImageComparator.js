@@ -79,7 +79,6 @@ class ImageComparator {
         log('ImageComparator.js', 'compareImages', '即将生成任务列队');
 
         // 构建任务列表
-        // todo: 保证列队中不超过100个
         for (const imgA of bidA) {
             for (const imgB of bidB) {
                 let { image: imageA, pageNumber: pageNumberA, width: widthA, height: heightA, } = imgA;

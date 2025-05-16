@@ -148,7 +148,6 @@ class TextComparator {
         log('TextComparator.js', 'compareTexts', '即将生成任务列队');
 
         // 构建任务列表
-        // todo: 保证列队中不超过100个
         for (let pa of sentencesA) {
             for (let pb of sentencesB) {
                 const lengthRatio = pa.text.length / pb.text.length;
@@ -185,13 +184,11 @@ class TextComparator {
                                     text: threadItem.a,
                                     textB: a,
                                     pageNumber: threadItem.pageA,
-                                    // viewport: pa.viewport,
                                 },
                                 b: {
                                     text: threadItem.b,
                                     textB: b,
                                     pageNumber: threadItem.pageB,
-                                    // viewport: pb.viewport,
                                 },
                                 similarity,
                             });
