@@ -25,6 +25,7 @@ updateSettings({
     images: {
         similarity: 0.9,
         resizeWidth: 100,
+        minSize: 300,
     },
 });
 
