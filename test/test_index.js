@@ -1,4 +1,4 @@
-const { BidComparator, setCachePath, updateSettings } = require('../index.js');
+const BidComparator = require('../index.js');
 
 let comparator = new BidComparator();
 
@@ -17,7 +17,7 @@ comparator.imageCompareProgressHandlerFactory = function (id) {
 // BidComparator.preload('./docs/g2-2.pdf');
 
 // 更新对比设置
-updateSettings({
+BidComparator.updateSettings({
     text: {
         threshold: 0.8,
         minLength: 15,

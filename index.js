@@ -230,23 +230,17 @@ class BidComparator {
             return arr;
         }, []);
     }
-}
 
-// 对比的设置缓存，在实例化时传入
-const _STORE_SETTINGS_TEXT = {};
-const _STORE_SETTINGS_IMAGE = {};
-
-module.exports = {
-    BidComparator,
-    setCachePath(path) {
+    static setCachePath(path) {
         CacheFile.setCachePath(path);
 
         setCachePath0(path);
         setCachePath1(path);
         setCachePath2(path);
         setCachePath3(path);
-    },
-    setLogCustomHandler(handler, { path, funName }) {
+    }
+
+    static setLogCustomHandler(handler, { path, funName }) {
         setCustomHandler(handler);
 
         if (path) {
@@ -255,14 +249,16 @@ module.exports = {
             setCustomLogHandler2({ path, funName });
             setCustomLogHandler3({ path, funName });
         }
-    },
-    setPreloadProgressHandler(handler) {
+    }
+
+    static setPreloadProgressHandler(handler) {
         setProgressHandler0(handler);
         setProgressHandler1(handler);
         setProgressHandler2(handler);
         setProgressHandler3(handler);
-    },
-    updateSettings({ text, image, workers = 'multi' }) {
+    }
+
+    static updateSettings({ text, image, workers = 'multi' }) {
         if (text) {
             const { threshold, minLength } = text;
 
@@ -295,5 +291,11 @@ module.exports = {
             TextComparator.regWorker(workers);
             ImageComparator.regWorker(workers);
         }
-    },
-};
+    }
+}
+
+// 对比的设置缓存，在实例化时传入
+const _STORE_SETTINGS_TEXT = {};
+const _STORE_SETTINGS_IMAGE = {};
+
+module.exports = BidComparator;
