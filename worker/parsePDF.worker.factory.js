@@ -307,6 +307,13 @@ module.exports = function (thisFileName) {
                     promiseList.push(function () {
                         return new Promise((resolve) => {
                             page.objs.get(imgIndex, async (imgRef) => {
+                                if (!imgRef) {
+                                    // 存在无法获取imgRef的情况，这事直接跳过该图片
+                                    resolve();
+
+                                    return;
+                                }
+
                                 const { data, width, height } = imgRef;
 
                                 imgs.push({ data, width, height, name: imgIndex });
