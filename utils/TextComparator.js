@@ -100,46 +100,79 @@ class TextComparator {
     // 清除投标文件中，招标文件部分
     async removeBiddingContent(texts, progress) {
         if (!this.biddingContent) {
+            log('TextComparator.js', 'removeBiddingContent', '没有检测到招标文件，无需排除内容');
+
             return texts;
         }
 
-        const clearedArr = [];
+        log('TextComparator.js', 'removeBiddingContent', '即将生成任务列队');
+
+        const threadList = [];
         const { texts: biddingTexts } = this.biddingContent;
 
-        for (let textItem of texts) {
-            let { text: bidText } = textItem;
+        // 构建任务列表
+        for (let pa of texts) {
+            const bList = [];
 
-            let allBiddingTextsNotSimilarToTextIem = true;
-
-            for (let { text: biddingText } of biddingTexts) {
-                const lengthRatio = biddingText.length / bidText.length;
+            for (let pb of biddingTexts) {
+                const lengthRatio = pa.text.length / pb.text.length;
 
                 // 先过滤一遍，长度相差太多就过滤掉
-                if (
-                    lengthRatio < this.options.threshold 
-                    || lengthRatio > (2 - this.options.threshold)
-                ) {
+                if (lengthRatio < this.options.threshold || lengthRatio > 2 - this.options.threshold) {
                     continue;
                 }
 
-                const { similarity } = await workerMultiThreading.handle({ a: biddingText, b: bidText });
-
-                if (similarity >= this.options.threshold) {
-                    // 只要投标文件中有任意句段与招标文件中的任意句段相似，则直接列入带比较列队，同时不再与剩余招标文件中的句段继续比对
-                    allBiddingTextsNotSimilarToTextIem = false;
-
-                    break;
-                }
+                bList.push({
+                    b: pb.text,
+                    pageB: pb.pageNumber,
+                });
             }
 
-            if (allBiddingTextsNotSimilarToTextIem) {
-                clearedArr.push(textItem);
-            }
-
-            progress && progress();
+            threadList.push({ a: pa.text, pageA: pa.pageNumber, bList });
         }
 
-        return clearedArr;
+        log('TextComparator.js', 'removeBiddingContent', '生成任务列队完毕：', threadList.length);
+
+        log('TextComparator.js', 'removeBiddingContent', '开始排除文字');
+
+        const result = await smartChunkProcessor.process(
+            threadList.map((threadItem) => {
+                return new Promise(async (resolve) => {
+                    const { a, pageA, bList } = threadItem;
+
+                    let someBiddingTextSimilarToTargetText = false;
+
+                    for (let bItem of bList) {
+                        const { similarity } = await workerMultiThreading.handle({
+                            a,
+                            pageA,
+                            ...bItem,
+                        });
+
+                        if (similarity >= this.options.threshold) {
+                            someBiddingTextSimilarToTargetText = true;
+
+                            break;
+                        }
+                    }
+
+                    if (!someBiddingTextSimilarToTargetText) {
+                        resolve({
+                            text: a,
+                            pageNumber: pageA,
+                        });
+                    } else {
+                        resolve(false);
+                    }
+
+                    progress && progress();
+                });
+            })
+        );
+
+        log('TextComparator.js', 'removeBiddingContent', '排除文字完毕：', result.length);
+
+        return result.filter((item) => item);
     }
 
     async compareTexts(sentencesA, sentencesB) {
@@ -153,10 +186,7 @@ class TextComparator {
                 const lengthRatio = pa.text.length / pb.text.length;
 
                 // 先过滤一遍，长度相差太多就过滤掉
-                if (
-                    lengthRatio < this.options.threshold 
-                    || lengthRatio > (2 - this.options.threshold)
-                ) {
+                if (lengthRatio < this.options.threshold || lengthRatio > 2 - this.options.threshold) {
                     continue;
                 }
 
