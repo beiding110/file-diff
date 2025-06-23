@@ -24,10 +24,10 @@
 ## 使用方法
 
 ```js
-import { BidComparator, setCachePath, updateSettings } from './index.js';
+import BidComparator from './index.js';
 
 // setCachePath 可设置缓存位置。默认为本库上层的 /cache 文件夹
-// setCachePath('path/to/cache')
+// BidComparator.setCachePath('path/to/cache')
 
 // 实例化
 let comparator = new BidComparator();
@@ -52,7 +52,7 @@ comparator.imageCompareProgressHandlerFactory = function (id) {
 BidComparator.preload('./docs/g2-3.pdf');
 
 // 更新对比设置
-updateSettings({
+BidComparator.updateSettings({
     text: {
         threshold: 0.8, // 相似程度阈值
         minLength: 15, // 最短句长
