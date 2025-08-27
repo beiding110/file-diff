@@ -10,16 +10,45 @@ module.exports = [
     },
     {
         type: 'location',
-        word: /(省|市|区|县|乡|镇|村|小区|屯|街道|社区|路|街|巷|号|栋|座|楼|层|室)$/,
-        tags: new Set(['ns', 'f', 'n', 'm', 'a', 'zg', 'x']),
+        word: /(省|市|区|县|乡|镇|村|屯|街道|路|街|巷|号|栋|座|楼|层|室)$/,
+        tags: new Set(['a', 'f', 'm', 'n', 'ns', 'nt', 'x', 'q']),
+        cut: {
+            // 裁剪函数，将左侧符合条件的全部依次裁剪掉
+            left({ word, tag }) {
+                return ['v', 'n', 'm'].includes(tag) || /^(\(|\)|（|）)/.test(word);
+            },
+            right: null,
+        },
         valid(entity) {
-            return entity.length >= 3;
+            return entity.length >= 3 && !/(单号|编号|证号|账号|公众号|服务号)$/.test(entity);
         },
     },
     {
         type: 'organization',
-        word: /(公司|中心|局|部门|集团|委员会|政府|院|所|银行|典当行|社|俱乐部|基地|园区|会|工作室|俱乐部|联盟|平台|工厂|农场|牧场|渔场|矿场|电站)$/,
-        tags: new Set(['n', 'j', 'nt', 'nz', 'l', 'v', 'ns', 'f', 'x', 'vn', 'c', 'eng']),
+        word: /(公司|中心|局|部门|集团|政府|院|所|银行|典当行|社|俱乐部|基地|园区|协会|商会|学会|基金会|工作室|俱乐部|联盟|工厂|农场|牧场|渔场|矿场|电站)$/,
+        tags: new Set(['an', 'c', 'eng', 'f', 'j', 'l', 'm', 'n', 'ns', 'nt', 'nz', 'v', 'vn', 'x']),
+        cut: {
+            // 裁剪函数，将左侧符合条件的全部依次裁剪掉
+            left({ word, tag }) {
+                return ['c', 'v', 'n'].includes(tag) || /^(\(|\)|（|）|\d)/.test(word);
+            },
+            right: null,
+        },
+        valid(entity) {
+            return entity.length >= 6;
+        },
+    },
+    {
+        type: 'system',
+        word: /(平台|系统|网)$/,
+        tags: new Set(['c', 'eng', 'f', 'j', 'l', 'm', 'n', 'ns', 'nt', 'nz', 'v', 'vn', 'x']),
+        cut: {
+            // 裁剪函数，将左侧符合条件的全部依次裁剪掉
+            left({ word, tag }) {
+                return ['c', 'v', 'n'].includes(tag) || /^(\(|\)|（|）|\d)/.test(word);
+            },
+            right: null,
+        },
         valid(entity) {
             return entity.length >= 6;
         },

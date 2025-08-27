@@ -1,7 +1,11 @@
-var nodejieba = require('nodejieba');
+const nodejieba = require('nodejieba');
+const path = require('node:path');
+
+const userDict = path.join(__dirname, './userdict.utf8');
 
 nodejieba.load({
     dict: nodejieba.DEFAULT_DICT,
+    userDict,
 });
 
 const REG_PUNCTUATION = require('./punctuation.js'); // 不可能在实体中出现的符号
@@ -13,13 +17,15 @@ class EntityExtracter {
     constructor(text) {
         this._text = text;
         this._tags = nodejieba.tag(text);
+
+        console.log(this._tags);
     }
 
     // 主提取方法
     extract() {
         let result = [];
 
-        ENTITY_INDICATORS.forEach(({ type, word, tags, valid, condition, reg }) => {
+        ENTITY_INDICATORS.forEach(({ type, word, tags, cut, valid, condition, reg }) => {
             let res = [];
 
             if (reg) {
@@ -27,7 +33,7 @@ class EntityExtracter {
             } else if (condition) {
                 res = this.extractByCondition(this._tags, { type, condition });
             } else {
-                res = this.extractByContext(this._tags, { type, word, tags, valid });
+                res = this.extractByContext(this._tags, { type, word, tags, cut, valid });
             }
 
             result = [...result, ...res];
@@ -77,7 +83,7 @@ class EntityExtracter {
     // 基于上下文提取实体
     extractByContext(
         taggedWords,
-        { type: indicatorType, word: indicatorWord, tags: indicatorTags, valid: indicatorValid }
+        { type: indicatorType, word: indicatorWord, tags: indicatorTags, cut: indicatorCut, valid: indicatorValid }
     ) {
         const entities = [];
 
@@ -121,26 +127,25 @@ class EntityExtracter {
             if (isEntityPart) {
                 buffer.push({ word, tag });
             } else if (buffer.length > 0) {
-                // 检查是否应该结束当前实体
-                const shouldEnd = this.shouldEndEntity(word, tag);
+                buffer = this.cutBufferEnds(buffer, indicatorCut);
 
-                if (shouldEnd) {
-                    const entity = buffer.map((item) => item.word).join('');
+                const entity = buffer.map((item) => item.word).join('');
 
-                    if (indicatorValid(entity)) {
-                        entities.push({
-                            entity,
-                            type: indicatorType,
-                        });
-                    }
-
-                    buffer = [];
+                if (indicatorValid(entity)) {
+                    entities.push({
+                        entity,
+                        type: indicatorType,
+                    });
                 }
+
+                buffer = [];
             }
         }
 
         // 处理最后一个实体
         if (buffer.length > 0) {
+            buffer = this.cutBufferEnds(buffer, indicatorCut);
+
             const entity = buffer.map((item) => item.word).join('');
 
             if (indicatorValid(entity)) {
@@ -198,14 +203,36 @@ class EntityExtracter {
         return false;
     }
 
-    // 判断是否应该结束当前实体
-    shouldEndEntity(word, tag) {
-        // 如果遇到标点符号，通常应该结束实体
-        if (['x', 'w', 'p', 'c'].includes(tag)) {
-            return true;
+    cutBufferEnds(buffer, cut = {}) {
+        if (!buffer || !buffer.length) {
+            return [];
         }
 
-        return false;
+        const { left, right } = cut;
+
+        let res = [...buffer];
+
+        if (left) {
+            let index = buffer.findIndex(({ word, tag }) => {
+                return !left({ word, tag });
+            });
+
+            res = buffer.slice(index);
+        }
+
+        if (right) {
+            res = res.reverse();
+
+            let index = res.findIndex(({ word, tag }) => {
+                return !right({ word, tag });
+            });
+
+            res = res.slice(index);
+
+            res = res.reverse();
+        }
+
+        return res;
     }
 }
 
