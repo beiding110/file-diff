@@ -1,11 +1,38 @@
 const REG_SURNAME = require('./surnames.js');
 
+function areParenthesesBalanced(str) {
+    const map = [
+        [/\)/g, /\(/g],
+        [/）/g, /（/g],
+        [/】/g, /【/g],
+        [/]/g, /\[/g],
+        [/}/g, /{/g],
+        [/>/g, /</g],
+        [/》/g, /《/g],
+        [/”/g, /“/g],
+    ];
+
+    const res = map.every(([rightReg, leftReg]) => {
+        let r = str.match(rightReg);
+
+        if (r && r.length) {
+            let l = str.match(leftReg);
+
+            return r.length === l?.length;
+        }
+
+        return true;
+    });
+
+    return res;
+}
+
 // 定义实体指示词 和 标签集合
 module.exports = [
     {
         type: 'location',
         condition({ tag, word }) {
-            return new Set(['ns']).has(tag);
+            return tag === 'ns';
         },
     },
     {
@@ -15,18 +42,28 @@ module.exports = [
         cut: {
             // 裁剪函数，将左侧符合条件的全部依次裁剪掉
             left({ word, tag }) {
-                return ['v', 'n', 'm'].includes(tag) || /^(\(|\)|（|）)/.test(word);
+                return ['v', 'n', 'm', 'q'].includes(tag) || /^(\(|\)|（|）)/.test(word);
             },
             right: null,
         },
         valid(entity) {
-            return entity.length >= 3 && !/(单号|编号|证号|账号|公众号|服务号)$/.test(entity);
+            return (
+                entity.length >= 3 &&
+                !/(单号|编号|证号|账号|公众号|服务号)$/.test(entity) &&
+                areParenthesesBalanced(entity)
+            );
+        },
+    },
+    {
+        type: 'organization',
+        condition({ tag, word }) {
+            return tag === 'nt';
         },
     },
     {
         type: 'organization',
         word: /(公司|中心|局|部门|集团|政府|院|所|银行|典当行|社|俱乐部|基地|园区|协会|商会|学会|基金会|工作室|俱乐部|联盟|工厂|农场|牧场|渔场|矿场|电站)$/,
-        tags: new Set(['an', 'c', 'eng', 'f', 'j', 'l', 'm', 'n', 'ns', 'nt', 'nz', 'v', 'vn', 'x']),
+        tags: new Set(['an', 'c', 'eng', 'f', 'j', 'l', 'm', 'n', 'ns', 'nz', 'v', 'vn', 'x']),
         cut: {
             // 裁剪函数，将左侧符合条件的全部依次裁剪掉
             left({ word, tag }) {
@@ -35,7 +72,7 @@ module.exports = [
             right: null,
         },
         valid(entity) {
-            return entity.length >= 6;
+            return entity.length >= 6 && areParenthesesBalanced(entity);
         },
     },
     {
@@ -50,7 +87,7 @@ module.exports = [
             right: null,
         },
         valid(entity) {
-            return entity.length >= 6;
+            return entity.length >= 6 && areParenthesesBalanced(entity);
         },
     },
     {
@@ -95,5 +132,9 @@ module.exports = [
     {
         type: 'domain',
         reg: /https?:\/\/[^\s/$.?#].[^\s]*/g,
+    },
+    {
+        type: 'paper',
+        reg: /《([^《》]+)》/g,
     },
 ];
