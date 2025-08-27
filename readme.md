@@ -1,4 +1,4 @@
-# pdf内容对比
+# pdf 内容对比
 
 ## 对比内容
 
@@ -8,10 +8,10 @@
 
 ## 对比过程
 
-- 将pdf进行缓存
-- 将pdf进行解析，解析为：拆分的文字段落、图片、属性。解析期间将所有图片提取、缓存
+- 将 pdf 进行缓存
+- 将 pdf 进行解析，解析为：拆分的文字段落、图片、属性。解析期间将所有图片提取、缓存
 - 将解析结果进行缓存
-- 计算pdf两两交叉数组，准备用来检测
+- 计算 pdf 两两交叉数组，准备用来检测
 - 按组进行对比：
   - （如果有需要排除的文字内容，则先对文字内容进行排除）
   - 文字对比，将阈值以上的结果保留（包括句长、两段文字的长度比）
@@ -80,3 +80,12 @@ comparator
         console.log(res);
     });
 ```
+
+### 注意
+
+- nodejieba 安装时，自动编译脚本会报错
+  1. 需要电脑安装 vs2022，并勾选使用 c++ 开发
+  2. 先忽略执行脚本并安装 `npm i nodejieba@2.6.0 --save --ignore-scripts`
+  3. 将 `backup/StringUtil.hpp` 内容替换到 `node_modules/nodejieba/deps/limonp/StringUtil.hpp`
+  4. 进入 `node_modules/nodejieba` 运行 `npm run install`
+     参考：https://travisbikkle.github.io/zh-hant/2024/07/chinese-search/
