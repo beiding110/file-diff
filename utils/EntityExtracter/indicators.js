@@ -1,5 +1,10 @@
 const REG_SURNAME = require('./surnames.js');
 
+/**
+ * 判断应当成对出现的符号，是否成对出现
+ * @param {String} str 字符串
+ * @returns 结果true为成对出现，false为不成对出现
+ */
 function areParenthesesBalanced(str) {
     const map = [
         [/\)/g, /\(/g],
