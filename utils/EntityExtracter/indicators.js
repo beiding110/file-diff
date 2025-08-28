@@ -46,9 +46,13 @@ module.exports = [
             right: null,
         },
         valid(entity) {
+            if (/国$/.test(entity)) {
+                return entity.length >= 2;
+            }
+
             return (
-                entity.length >= 2 &&
-                !/(单号|编号|证号|账号|帐号|公众号|服务号)$/.test(entity) &&
+                entity.length >= 3 &&
+                !/(单号|编号|证号|账号|帐号|公众号|服务号|序号|专区)$/.test(entity) &&
                 areParenthesesBalanced(entity)
             );
         },
