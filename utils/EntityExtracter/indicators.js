@@ -56,12 +56,6 @@ module.exports = [
     },
     {
         type: 'organization',
-        condition({ tag, word }) {
-            return tag === 'nt';
-        },
-    },
-    {
-        type: 'organization',
         word: /(公司|中心|局|部门|集团|政府|院|所|银行|典当行|合作社|学社|俱乐部|基地|园区|协会|商会|学会|基金会|工作室|俱乐部|联盟|工厂|农场|牧场|渔场|矿场|电站)$/,
         tags: new Set(['an', 'c', 'eng', 'f', 'j', 'l', 'm', 'n', 'ns', 'nt', 'nz', 'v', 'vn', 'x']),
         cut: {
