@@ -36,13 +36,7 @@ function areParenthesesBalanced(str) {
 module.exports = [
     {
         type: 'location',
-        condition({ tag, word }) {
-            return tag === 'ns';
-        },
-    },
-    {
-        type: 'location',
-        word: /(省|市|区|县|乡|镇|村|屯|街道|路|街|巷|号|栋|座|楼|层|室)$/,
+        word: /(国|省|市|区|县|乡|镇|村|屯|街道|路|街|巷|号|栋|座|楼|层|室)$/,
         tags: new Set(['a', 'f', 'm', 'n', 'ns', 'nt', 'nz', 'x', 'q', 'v']),
         cut: {
             // 裁剪函数，将左侧符合条件的全部依次裁剪掉
@@ -53,8 +47,8 @@ module.exports = [
         },
         valid(entity) {
             return (
-                entity.length >= 3 &&
-                !/(单号|编号|证号|账号|公众号|服务号)$/.test(entity) &&
+                entity.length >= 2 &&
+                !/(单号|编号|证号|账号|帐号|公众号|服务号)$/.test(entity) &&
                 areParenthesesBalanced(entity)
             );
         },
@@ -115,7 +109,7 @@ module.exports = [
     },
     {
         type: 'tel',
-        reg: /(\(?0[0-9]{2,3}\)?(－|-)?)?[0-9]{7,8}/g,
+        reg: /((\(|（)0[0-9]{2,3}(\)|）)[0-9]{7,8})|((0[0-9]{2,3}(－|-))[0-9]{7,8})/g,
     },
     {
         type: 'ucc',
