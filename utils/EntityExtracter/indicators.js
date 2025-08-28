@@ -130,7 +130,7 @@ module.exports = [
     },
     {
         type: 'domain',
-        reg: /https?:\/\/[^\s/$.?#].[^\s]*/g,
+        reg: /https?:\/\/(?:[-\w.]|(?:%[\da-fA-F]{2}))+/g,
     },
     {
         type: 'paper',
