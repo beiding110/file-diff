@@ -1,6 +1,8 @@
 const nodejieba = require('nodejieba');
 const path = require('node:path');
 
+const deduplicationArray = require('./util/deduplicationArray.js');
+
 const userDict = path.join(__dirname, './userdict.utf8');
 
 nodejieba.load({
@@ -17,8 +19,6 @@ class EntityExtracter {
     constructor(text) {
         this._text = text;
         this._tags = nodejieba.tag(text);
-
-        console.log(this._tags);
     }
 
     // 主提取方法
@@ -29,20 +29,31 @@ class EntityExtracter {
             let res = [];
 
             if (reg) {
-                res = this.extractByReg(this._text, { type, reg, valid });
+                // 正文全文按正则取值
+                res = this._extractByReg(this._text, { type, reg, valid });
             } else if (condition) {
-                res = this.extractByCondition(this._tags, { type, condition });
+                // 拆分词性后，按判断条件取值
+                res = this._extractByCondition(this._tags, { type, condition });
             } else {
-                res = this.extractByContext(this._tags, { type, word, tags, cut, valid });
+                // 拆分词性后，根据上下文取值
+                res = this._extractByContext(this._tags, { type, word, tags, cut, valid });
             }
 
             result = [...result, ...res];
         });
 
-        return result;
+        // todo: 结果去重
+
+        return deduplicationArray(result); // 去重
     }
 
-    extractByReg(text, { type, reg, valid }) {
+    /**
+     * 正文全文按正则取值
+     * @param {String} text 正文内容
+     * @param {Object} param1 条件对象
+     * @returns 提取到的数组
+     */
+    _extractByReg(text, { type, reg, valid }) {
         var res = text.match(reg);
 
         if (!res) {
@@ -55,15 +66,23 @@ class EntityExtracter {
             });
         }
 
-        return res.map((item) => {
+        const entities = res.map((item) => {
             return {
                 entity: item,
                 type,
             };
         });
+
+        return deduplicationArray(entities); // 去重
     }
 
-    extractByCondition(taggedWords, { type, condition }) {
+    /**
+     * 拆分词性后，按判断条件取值
+     * @param {Array} taggedWords 按词性拆分后的数组
+     * @param {Object} param1 条件对象
+     * @returns 提取到的数组
+     */
+    _extractByCondition(taggedWords, { type, condition }) {
         const entities = [];
 
         for (let i = 0; i < taggedWords.length; i++) {
@@ -77,11 +96,16 @@ class EntityExtracter {
             }
         }
 
-        return entities;
+        return deduplicationArray(entities); // 去重
     }
 
-    // 基于上下文提取实体
-    extractByContext(
+    /**
+     * 基于上下文提取实体
+     * @param {Array} taggedWords 按词性拆分后的数组
+     * @param {Object} param1 条件对象
+     * @returns 提取到的数组
+     */
+    _extractByContext(
         taggedWords,
         { type: indicatorType, word: indicatorWord, tags: indicatorTags, cut: indicatorCut, valid: indicatorValid }
     ) {
@@ -116,7 +140,7 @@ class EntityExtracter {
             }
 
             // 检查当前词是否可能是实体的一部分
-            const isEntityPart = this.isEntityPart(
+            const isEntityPart = this._isEntityPart(
                 word,
                 tag,
                 { word: indicatorWord, tags: indicatorTags },
@@ -127,7 +151,7 @@ class EntityExtracter {
             if (isEntityPart) {
                 buffer.push({ word, tag });
             } else if (buffer.length > 0) {
-                buffer = this.cutBufferEnds(buffer, indicatorCut);
+                buffer = this._cutBufferEnds(buffer, indicatorCut);
 
                 const entity = buffer.map((item) => item.word).join('');
 
@@ -144,7 +168,7 @@ class EntityExtracter {
 
         // 处理最后一个实体
         if (buffer.length > 0) {
-            buffer = this.cutBufferEnds(buffer, indicatorCut);
+            buffer = this._cutBufferEnds(buffer, indicatorCut);
 
             const entity = buffer.map((item) => item.word).join('');
 
@@ -156,11 +180,11 @@ class EntityExtracter {
             }
         }
 
-        return [...new Set(entities)]; // 去重
+        return deduplicationArray(entities); // 去重
     }
 
     // 判断是否是实体的一部分
-    isEntityPart(word, tag, { word: indicatorWord, tags: indicatorTags }, prevList, nextList) {
+    _isEntityPart(word, tag, { word: indicatorWord, tags: indicatorTags }, prevList, nextList) {
         if (REG_PUNCTUATION.test(word)) {
             // 过滤不可能在实体中出现的符号
             return false;
@@ -203,7 +227,13 @@ class EntityExtracter {
         return false;
     }
 
-    cutBufferEnds(buffer, cut = {}) {
+    /**
+     * 根据条件，从两端切除满足条件的项
+     * @param {Array} buffer 已经提取到的词性数组
+     * @param {Object} cut 条件对象
+     * @returns 切除后的结果数组
+     */
+    _cutBufferEnds(buffer, cut = {}) {
         if (!buffer || !buffer.length) {
             return [];
         }
