@@ -31,12 +31,12 @@ function areParenthesesBalanced(str) {
 module.exports = [
     {
         type: 'location',
-        word: /(国|省|市|区|县|乡|镇|村|屯|街道|路|街|巷|号|栋|座|楼|层|室)$/,
-        tags: new Set(['a', 'b', 'f', 'm', 'n', 'ns', 'nt', 'nz', 'x', 'q', 'v']),
+        word: /(国|省|市|区|县|乡|镇|村|屯|街道|路|街|巷|号|栋|座|楼|层|室|大厦)$/,
+        tags: new Set(['a', 'b', 'f', 'm', 'n', 'ns', 'nt', 'nz', 'x', 'q', 'v', 'vn']),
         cut: {
             // 裁剪函数，将左侧符合条件的全部依次裁剪掉
             left({ word, tag }) {
-                return ['v', 'n', 'm', 'q', 'b'].includes(tag) || /^(\(|\)|（|）)/.test(word);
+                return ['v', 'n', 'nt', 'm', 'q', 'b',].includes(tag) || !/^[\u4e00-\u9fa5]/.test(word);
             },
             right: null,
         },
@@ -55,7 +55,7 @@ module.exports = [
     },
     {
         type: 'organization',
-        word: /(公司|中心|局|厅|部门|集团|政府|院|所|银行|支行|典当行|合作社|学社|俱乐部|基地|园区|协会|商会|学会|工会|基金会|十字会|委员会|工作室|俱乐部|联盟|工厂|农场|牧场|渔场|矿场|电站|办公室|幼儿园|小学|中学|大学|学院|医院|办|办事处)$/,
+        word: /(公司|中心|局|厅|部门|集团|政府|院|所|银行|支行|分行|典当行|合作社|学社|俱乐部|基地|园区|协会|商会|学会|工会|基金会|十字会|委员会|工作室|俱乐部|联盟|工厂|农场|牧场|渔场|矿场|电站|办公室|幼儿园|小学|中学|大学|学院|医院|办|办事处)$/,
         tags: new Set(['an', 'c', 'eng', 'f', 'j', 'l', 'm', 'n', 'ns', 'nt', 'nz', 'p', 'v', 'vn', 'x']),
         cut: {
             // 裁剪函数，将左侧符合条件的全部依次裁剪掉
@@ -64,7 +64,7 @@ module.exports = [
                     return false;
                 }
 
-                return ['c', 'f', 'v', 'm', 'n', 'p'].includes(tag) || /^(\(|\)|（|）|\d)/.test(word);
+                return ['c', 'f', 'v', 'm', 'n', 'p'].includes(tag) || !/^[\u4e00-\u9fa5]/.test(word);
             },
             right: null,
         },
