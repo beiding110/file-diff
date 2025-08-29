@@ -19,14 +19,9 @@ function areParenthesesBalanced(str) {
 
     const res = map.every(([rightReg, leftReg]) => {
         let r = str.match(rightReg);
+        let l = str.match(leftReg);
 
-        if (r && r.length) {
-            let l = str.match(leftReg);
-
-            return r.length === l?.length;
-        }
-
-        return true;
+        return r?.length === l?.length;
     });
 
     return res;
@@ -37,11 +32,11 @@ module.exports = [
     {
         type: 'location',
         word: /(国|省|市|区|县|乡|镇|村|屯|街道|路|街|巷|号|栋|座|楼|层|室)$/,
-        tags: new Set(['a', 'f', 'm', 'n', 'ns', 'nt', 'nz', 'x', 'q', 'v']),
+        tags: new Set(['a', 'b', 'f', 'm', 'n', 'ns', 'nt', 'nz', 'x', 'q', 'v']),
         cut: {
             // 裁剪函数，将左侧符合条件的全部依次裁剪掉
             left({ word, tag }) {
-                return ['v', 'n', 'm', 'q'].includes(tag) || /^(\(|\)|（|）)/.test(word);
+                return ['v', 'n', 'm', 'q', 'b'].includes(tag) || /^(\(|\)|（|）)/.test(word);
             },
             right: null,
         },
@@ -52,19 +47,24 @@ module.exports = [
 
             return (
                 entity.length >= 3 &&
-                !/(单号|编号|证号|账号|帐号|公众号|服务号|序号|专区)$/.test(entity) &&
+                !/(单号|编号|证号|账号|帐号|公众号|服务号|序号|专区|农村)$/.test(entity) &&
+                !/^(教学楼|办公室|储藏室)$/.test(entity) &&
                 areParenthesesBalanced(entity)
             );
         },
     },
     {
         type: 'organization',
-        word: /(公司|中心|局|部门|集团|政府|院|所|银行|典当行|合作社|学社|俱乐部|基地|园区|协会|商会|学会|工会|基金会|十字会|工作室|俱乐部|联盟|工厂|农场|牧场|渔场|矿场|电站|办公室)$/,
-        tags: new Set(['an', 'c', 'eng', 'f', 'j', 'l', 'm', 'n', 'ns', 'nt', 'nz', 'v', 'vn', 'x']),
+        word: /(公司|中心|局|厅|部门|集团|政府|院|所|银行|支行|典当行|合作社|学社|俱乐部|基地|园区|协会|商会|学会|工会|基金会|十字会|委员会|工作室|俱乐部|联盟|工厂|农场|牧场|渔场|矿场|电站|办公室|幼儿园|小学|中学|大学|学院|医院|办|办事处)$/,
+        tags: new Set(['an', 'c', 'eng', 'f', 'j', 'l', 'm', 'n', 'ns', 'nt', 'nz', 'p', 'v', 'vn', 'x']),
         cut: {
             // 裁剪函数，将左侧符合条件的全部依次裁剪掉
             left({ word, tag }) {
-                return ['c', 'v', 'n'].includes(tag) || /^(\(|\)|（|）|\d)/.test(word);
+                if (['全国', '国家'].includes(word)) {
+                    return false;
+                }
+
+                return ['c', 'f', 'v', 'm', 'n', 'p'].includes(tag) || /^(\(|\)|（|）|\d)/.test(word);
             },
             right: null,
         },
@@ -74,12 +74,16 @@ module.exports = [
     },
     {
         type: 'system',
-        word: /(平台|系统|网)$/,
-        tags: new Set(['c', 'eng', 'f', 'j', 'l', 'm', 'n', 'ns', 'nt', 'nz', 'v', 'vn', 'x']),
+        word: /(平台|系统|网|网站)$/,
+        tags: new Set(['an', 'c', 'eng', 'f', 'j', 'l', 'm', 'n', 'ns', 'nt', 'nz', 'p', 'v', 'vn', 'x']),
         cut: {
             // 裁剪函数，将左侧符合条件的全部依次裁剪掉
             left({ word, tag }) {
-                return ['c', 'v', 'n'].includes(tag) || /^(\(|\)|（|）|\d)/.test(word);
+                if (['全国', '国家'].includes(word)) {
+                    return false;
+                }
+
+                return ['c', 'f', 'v', 'm', 'n', 'p'].includes(tag) || /^(\(|\)|（|）|\d)/.test(word);
             },
             right: null,
         },
