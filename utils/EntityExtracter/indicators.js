@@ -47,7 +47,7 @@ module.exports = [
 
             return (
                 entity.length >= 3 &&
-                !/(单号|编号|证号|账号|帐号|公众号|服务号|序号|专区|农村)$/.test(entity) &&
+                !/(单号|编号|证号|账号|帐号|公众号|服务号|序号|版本号|专区|农村)$/.test(entity) &&
                 !/^(教学楼|办公室|储藏室)$/.test(entity) &&
                 areParenthesesBalanced(entity)
             );
