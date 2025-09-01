@@ -31,12 +31,12 @@ function areParenthesesBalanced(str) {
 module.exports = [
     {
         type: 'location',
-        word: /(国|省|市|区|县|乡|镇|村|屯|街道|路|街|巷|号|栋|座|楼|层|室|大厦)$/,
+        word: /(国|省|市|区|县|乡|镇|村|屯|街道|路|街|巷|号|栋|座|楼|层|室|大厦|侧)$/,
         tags: new Set(['a', 'b', 'f', 'm', 'n', 'ns', 'nt', 'nz', 'x', 'q', 'v', 'vn']),
         cut: {
             // 裁剪函数，将左侧符合条件的全部依次裁剪掉
             left({ word, tag }) {
-                return ['v', 'n', 'nt', 'm', 'q', 'b',].includes(tag) || !/^[\u4e00-\u9fa5]/.test(word);
+                return ['a', 'v', 'n', 'nt', 'm', 'q', 'b',].includes(tag) || !/^[\u4e00-\u9fa5]/.test(word);
             },
             right: null,
         },
@@ -64,12 +64,14 @@ module.exports = [
                     return false;
                 }
 
-                return ['c', 'f', 'v', 'm', 'n', 'p'].includes(tag) || !/^[\u4e00-\u9fa5]/.test(word);
+                return ['c', 'f', 'v', 'vn', 'm', 'n', 'p'].includes(tag) || !/^[\u4e00-\u9fa5]/.test(word);
             },
             right: null,
         },
         valid(entity) {
-            return entity.length >= 6 && areParenthesesBalanced(entity);
+            return entity.length >= 6 && 
+            !/(场所)$/.test(entity) &&
+            areParenthesesBalanced(entity);
         },
     },
     {
@@ -83,12 +85,14 @@ module.exports = [
                     return false;
                 }
 
-                return ['c', 'f', 'v', 'm', 'n', 'p'].includes(tag) || /^(\(|\)|（|）|\d)/.test(word);
+                return ['c', 'f', 'v', 'vn', 'm', 'n', 'p'].includes(tag) || /^(\(|\)|（|）|\d)/.test(word);
             },
             right: null,
         },
         valid(entity) {
-            return entity.length >= 6 && areParenthesesBalanced(entity);
+            return entity.length >= 6 &&
+            !/(互联网)$/.test(entity) &&
+            areParenthesesBalanced(entity);
         },
     },
     {
