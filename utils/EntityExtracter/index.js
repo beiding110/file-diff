@@ -215,7 +215,7 @@ class EntityExtracter {
 
         // 目标字符前所有项都符合词性，且不存在标点符号
         if (firstIndex >= 0) {
-            let checkList = nextList.slice(0, firstIndex);
+            let checkList = nextList.slice(0, firstIndex + 1);
 
             const everyWordBeforeKeyWordIsRightKey = checkList.every((item) => {
                 return indicatorTags.has(item.tag) && !REG_PUNCTUATION.test(item.word);
