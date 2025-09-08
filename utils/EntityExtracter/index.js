@@ -45,6 +45,16 @@ class EntityExtracter {
         return deduplicationArray(result, ['entity', 'type']); // 去重
     }
 
+    // 销毁
+    destroy() {
+        this._tags = null;
+        this._text = null;
+    }
+
+    static deduplication(...args) {
+        return deduplicationArray(...args);
+    }
+
     /**
      * 正文全文按正则取值
      * @param {String} text 正文内容
