@@ -42,9 +42,7 @@ class EntityExtracter {
             result = [...result, ...res];
         });
 
-        // todo: 结果去重
-
-        return deduplicationArray(result); // 去重
+        return deduplicationArray(result, ['entity', 'type']); // 去重
     }
 
     /**
@@ -73,7 +71,7 @@ class EntityExtracter {
             };
         });
 
-        return deduplicationArray(entities); // 去重
+        return entities;
     }
 
     /**
@@ -96,7 +94,7 @@ class EntityExtracter {
             }
         }
 
-        return deduplicationArray(entities); // 去重
+        return entities;
     }
 
     /**
@@ -180,7 +178,7 @@ class EntityExtracter {
             }
         }
 
-        return deduplicationArray(entities); // 去重
+        return entities;
     }
 
     // 判断是否是实体的一部分
