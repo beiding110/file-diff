@@ -47,8 +47,8 @@ module.exports = [
 
             return (
                 entity.length >= 3 &&
-                !/(单号|编号|证号|账号|帐号|公众号|服务号|序号|序列号|版本号|专区|农村)$/.test(entity) &&
-                !/^(教学楼|办公室|储藏室)$/.test(entity) &&
+                !/(单号|编号|证号|账号|帐号|公众号|服务号|序号|序列号|版本号|手机号|型号|证书号|专区|农村|地区|作业区|每层|回填层|井室|一侧|一座|道路|上路|线路|道路|分层|图层)$/.test(entity) &&
+                !/^(教学楼|办公室|储藏室|试验室|会议室|办公区)$/.test(entity) &&
                 areParenthesesBalanced(entity)
             );
         },
@@ -91,7 +91,7 @@ module.exports = [
         },
         valid(entity) {
             return entity.length >= 6 &&
-            !/(互联网)$/.test(entity) &&
+            !/(互联网|管网|路网|上网|新风系统)$/.test(entity) &&
             areParenthesesBalanced(entity);
         },
     },
