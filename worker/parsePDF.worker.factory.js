@@ -133,25 +133,23 @@ module.exports = function (thisFileName) {
             log('parsePDF.worker.factory.js', '_getPageTexts', '开始解析页面文字：', pageNumber);
 
             const textContent = await page.getTextContent();
-            // 按字体划分后的句组
-            log('parsePDF.worker.factory.js', '_getPageTexts', '文字按字体分组');
-            const fontGroups = _groupDifferentFonts(textContent);
 
+            // 按字体划分后的句组
             log(
                 'parsePDF.worker.factory.js',
                 '_getPageTexts',
-                '文字按字体分组完毕：',
-                fontGroups.length,
-                '开始按标点切割'
+                '开始主动处理文字，处理前数量：',
+                textContent.items.length
             );
-            let fonts = [];
+            let fontGroups = _groupDifferentByFonts(textContent); // 文字按字体分组
+            fontGroups = _reUnionLinesByXY(fontGroups); // 按坐标重组行
+            fontGroups = _groupDifferentByFullRow(fontGroups, page.view[2]); // 按内容是否占满整行分组段落
+            fontGroups = _splitByPunctuation(fontGroups); // 按标点切割语句
+            log('parsePDF.worker.factory.js', '_getPageTexts', '结束主动处理文字，处理后数量：', fontGroups.length);
 
-            fontGroups.forEach((font) => {
-                let text = font
-                    .map((item) => item.str)
-                    .join('')
-                    .trim(); // 这里之前使用的 /n 改为了空字符串，后续看看是否需要改为' '
+            let pageTexts = [];
 
+            fontGroups.forEach((text) => {
                 if (!text) {
                     return;
                 }
@@ -161,15 +159,12 @@ module.exports = function (thisFileName) {
                     text,
                 };
 
-                // 将页面中的文字按标点切割
-                let pageSplitByPunctuation = _splitByPunctuation(page);
-
-                fonts = [...fonts, ...pageSplitByPunctuation];
+                pageTexts.push(page);
             });
 
-            log('parsePDF.worker.factory.js', '_getPageTexts', '解析页面文字完毕：', fonts.length);
+            log('parsePDF.worker.factory.js', '_getPageTexts', '解析页面文字完毕：', pageTexts.length);
 
-            return fonts;
+            return pageTexts;
         }
 
         async function _getPageImages({ page, pageNumber, cacheFile }) {
@@ -203,7 +198,7 @@ module.exports = function (thisFileName) {
         }
 
         // 按字体、字号对内容进行分组
-        function _groupDifferentFonts(textContent) {
+        function _groupDifferentByFonts(textContent) {
             const textInDifferentFonts = [];
             let lastText = null;
 
@@ -238,35 +233,157 @@ module.exports = function (thisFileName) {
             return textInDifferentFonts;
         }
 
-        // 按标点符号切割
-        function _splitByPunctuation(page) {
-            // 统一全角字符为半角
-            const normalized = page.text
-                .normalize('NFKC')
-                .replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
-                .replace(/\s+/g, ' ')
-                .trim();
+        // 根据坐标，按行重组
+        function _reUnionLinesByXY(texts) {
+            const result = [];
 
-            // 将断句进一步拆分
-            const sentences = _splitSentences(normalized)
-                .map((s) => s.replace(/^\s+|\s+$/g, ''))
-                .filter((s) => s.length > 0);
+            texts.forEach((fontGroup) => {
+                const lines = [];
 
-            return sentences.map((s) => {
-                return {
-                    ...page,
-                    text: s,
-                };
+                let lineFirstText = null; // 这组文字段
+                let lastText = null; // 上个段
+
+                fontGroup.forEach((text, index) => {
+                    if (!lineFirstText) {
+                        // 第一个
+                        lineFirstText = {
+                            ...text,
+                        };
+                    } else {
+                        // 非第一个
+                        let x = text.transform[4],
+                            y = text.transform[5],
+                            width = text.width,
+                            height = text.height,
+                            lineY = lineFirstText.transform[5],
+                            lastX = lastText.transform[4],
+                            lastWidth = lastText.width;
+
+                        if (
+                            y === lineY && // y坐标相同
+                            Math.abs(lastX + lastWidth - x) < height // x方向间隔不远
+                        ) {
+                            // 同一行
+
+                            lineFirstText.str += text.str;
+                            lineFirstText.width += width; // 重新计算宽度
+                        } else {
+                            // 不同行
+
+                            lines.push({
+                                ...lineFirstText,
+                                x_s: lineFirstText.transform[4],
+                                x_e: lineFirstText.transform[4] + lineFirstText.width,
+                                y_s: lineFirstText.transform[5],
+                                y_e: lineFirstText.transform[5] + lineFirstText.height,
+                            });
+
+                            lineFirstText = {
+                                ...text,
+                            };
+                        }
+                    }
+
+                    lastText = {
+                        ...text,
+                    };
+
+                    // 最后一个
+                    if (index === fontGroup.length - 1) {
+                        lines.push({
+                            ...lineFirstText,
+                            x_s: lineFirstText.transform[4],
+                            x_e: lineFirstText.transform[4] + lineFirstText.width,
+                            y_s: lineFirstText.transform[5],
+                            y_e: lineFirstText.transform[5] + lineFirstText.height,
+                        });
+                    }
+                });
+
+                result.push(lines);
             });
+
+            return result;
         }
 
-        // 按句子拆分文本
-        function _splitSentences(text) {
-            // 支持中文/英文/日文分句
-            const sentenceRegex =
-                /([^\n.!?;。！？；\u203C\u203D\u2047-\u2049]+([.!?;。！？；\u203C\u203D\u2047-\u2049]|$))/gmu;
+        // 根据缩进分段
+        function _groupDifferentByFullRow(texts, pageWidth, tolerance = 10) {
+            const result = [];
 
-            return text.match(sentenceRegex) || [];
+            texts.forEach((fontGroup) => {
+                const lines = [];
+
+                let sentence = null,
+                    lastRow = null;
+
+                fontGroup.forEach((text, index) => {
+                    if (!sentence) {
+                        // 第一个
+                        sentence = {
+                            str: text.str,
+                        };
+                    } else {
+                        // 非第一个
+                        let x_e = lastRow.x_e,
+                            x_s = lastRow.x_s;
+
+                        if (Math.abs(x_e + x_s - pageWidth) < text.height * 2 + tolerance) {
+                            // 上一个占满整行
+
+                            sentence.str += text.str;
+                        } else {
+                            // 上一个没占满整行
+
+                            lines.push({
+                                ...sentence,
+                            });
+
+                            sentence = {
+                                str: text.str,
+                            };
+                        }
+                    }
+
+                    lastRow = text;
+
+                    // 最后一个
+                    if (index === fontGroup.length - 1) {
+                        lines.push({
+                            ...sentence,
+                        });
+                    }
+                });
+
+                result.push(lines);
+            });
+
+            return result;
+        }
+
+        // 按标点符号切割
+        function _splitByPunctuation(texts) {
+            let result = [];
+
+            texts.forEach((fontGroup) => {
+                fontGroup.forEach(({ str }) => {
+                    // 统一全角字符为半角
+                    const normalized = str
+                        .normalize('NFKC')
+                        .replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+                        .replace(/\s+/g, ' ')
+                        .trim();
+
+                    // 将断句按标点拆分
+                    const sentences =
+                        normalized.match(
+                            /([^\n!?;。！？；\u203C\u203D\u2047-\u2049]+([!?;。！？；\u203C\u203D\u2047-\u2049]|$))/gmu
+                        ) || [].map((s) => s.replace(/^\s+|\s+$/g, '')).filter((s) => s.length > 0);
+
+                    result = [...result, ...sentences];
+                });
+            });
+
+            return result;
         }
 
         async function _extractImages(page) {
