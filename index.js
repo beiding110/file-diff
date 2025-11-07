@@ -107,8 +107,7 @@ class BidComparator {
             await this.across(bidFiles);
         }
 
-        const GROUPID = uuidv4(),
-            RESULT = [];
+        const GROUPID = uuidv4();
 
         for (let i = 0; i < this.bidDocsMatrix.length; i++) {
             let { id, files } = this.bidDocsMatrix[i];
@@ -139,12 +138,20 @@ class BidComparator {
 
             result.groupid = GROUPID;
 
-            RESULT.push(result);
+            // 缓存本次结果，最后一次循环结束后，缓存了完整结果
+            let cachedResult = CacheFile.getResult(GROUPID);
+            if (!cachedResult) {
+                // 首个结果
+                cachedResult = [];
+            }
+            cachedResult.push(result);
+            CacheFile.saveResult(cachedResult, GROUPID);
         }
 
-        CacheFile.saveResult(RESULT, GROUPID);
+        // 返回完整结果
+        let cachedResult = CacheFile.getResult(GROUPID);
 
-        return RESULT;
+        return cachedResult;
     }
 
     async compareBids(bidA, bidB, id) {
