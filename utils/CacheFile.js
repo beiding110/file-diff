@@ -211,13 +211,13 @@ class CacheFile {
             return fileSavePath;
         }
 
-        return new Promise((resolve, reject) => {
-            // 计算通道数，可能是3/4通道
-            let channels = data.length / width / height;
+        // 计算通道数，可能是3/4通道
+        let channels = data.length / width / height;
 
-            log('CacheFile.js', 'saveImage', '使用sharp进行缓存，通道数：', channels);
+        log('CacheFile.js', 'saveImage', '使用sharp进行缓存，通道数：', channels);
 
-            sharp(data, {
+        try {
+            await sharp(data, {
                 raw: {
                     width,
                     height,
@@ -225,18 +225,16 @@ class CacheFile {
                 },
             })
                 .png()
-                .toFile(fileSavePath)
-                .then(() => {
-                    log('CacheFile.js', 'saveImage', '缓存图片完毕：', fileSavePath);
+                .toFile(fileSavePath);
 
-                    resolve(fileSavePath);
-                })
-                .catch((e) => {
-                    log('CacheFile.js', 'saveImage', '缓存图片失败：', e);
+            log('CacheFile.js', 'saveImage', '缓存图片完毕：', fileSavePath);
 
-                    reject(e);
-                });
-        });
+            
+        } catch (e) {
+            log('CacheFile.js', 'saveImage', '缓存图片失败：', e);
+        }
+
+        return fileSavePath;
     }
 
     // 保存处理后的内容
