@@ -202,13 +202,21 @@ class CacheFile {
             fs.mkdirSync(targetPath);
         }
 
+        const result = {
+            image: '',
+            image300: '',
+            image200: '',
+            image100: '',
+        };
+
         const fileSavePath = path.join(targetPath, `./${name}.png`);
+        const fileSavePath300 = path.join(targetPath, `./${name}.300.png`);
+        const fileSavePath200 = path.join(targetPath, `./${name}.200.png`);
+        const fileSavePath100 = path.join(targetPath, `./${name}.100.png`);
 
         if (this.checkFileExist(fileSavePath)) {
-            log('CacheFile.js', 'saveImage', '已缓存过，直接读取');
-
             // 已经存在，则不进行重新存放
-            return fileSavePath;
+            return false;
         }
 
         // 计算通道数，可能是3/4通道
@@ -217,24 +225,51 @@ class CacheFile {
         log('CacheFile.js', 'saveImage', '使用sharp进行缓存，通道数：', channels);
 
         try {
-            await sharp(data, {
+            const orgImg = await sharp(data, {
                 raw: {
                     width,
                     height,
                     channels,
                 },
-            })
-                .png()
-                .toFile(fileSavePath);
+            });
+
+            // 原图
+            orgImg.png().toFile(fileSavePath);
+            result.image = fileSavePath;
+
+            // 灰度处理
+            orgImg.grayscale();
+            // 300
+            if (width > 300) {
+                let img = orgImg.clone().resize({ width: 300 });
+
+                img.png().toFile(fileSavePath300);
+
+                result.image300 = fileSavePath300;
+            }
+            // 200
+            if (width > 200) {
+                let img = orgImg.clone().resize({ width: 200 });
+
+                img.png().toFile(fileSavePath200);
+
+                result.image200 = fileSavePath200;
+            }
+            // 100
+            if (width > 100) {
+                let img = orgImg.clone().resize({ width: 100 });
+
+                img.png().toFile(fileSavePath100);
+
+                result.image100 = fileSavePath100;
+            }
 
             log('CacheFile.js', 'saveImage', '缓存图片完毕：', fileSavePath);
-
-            
         } catch (e) {
             log('CacheFile.js', 'saveImage', '缓存图片失败：', e);
         }
 
-        return fileSavePath;
+        return result;
     }
 
     // 保存处理后的内容

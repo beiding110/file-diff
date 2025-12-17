@@ -181,15 +181,23 @@ module.exports = function (thisFileName) {
             for (let i = 0; i < imgs.length; i++) {
                 let { data, width, height, name } = imgs[i];
 
+                if (images.find((img) => img.name === name && img.width === width && img.height === height)) {
+                    // 存在相同图片
+                    continue;
+                }
+
                 // 缓存图片
                 let imgPath = await cacheFile.saveImage({ data, width, height, name });
 
-                images.push({
-                    pageNumber,
-                    image: imgPath,
-                    width,
-                    height,
-                });
+                if (imgPath) {
+                    images.push({
+                        name,
+                        pageNumber,
+                        ...imgPath,
+                        width,
+                        height,
+                    });
+                }
             }
 
             log('parsePDF.worker.factory.js', '_getPageImages', '解析页面图片完毕：', images.length);

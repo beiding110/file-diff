@@ -61,7 +61,11 @@ function regWorker(type = 'multi') {
 regWorker('multi');
 
 class ImageComparator {
-    constructor({ similarity = 0.9, resizeWidth = 300, minSize = 100 }) {
+    constructor({ 
+        similarity = 0.9, // 相似度目标
+        resizeWidth = 300, // 对比时的统一大小，100/200/300
+        minSize = 100, // 最小图片宽高，小于的不参与对比
+    }) {
         this.options = {
             similarity,
             resize: { width: resizeWidth },
@@ -81,8 +85,8 @@ class ImageComparator {
         // 构建任务列表
         for (const imgA of bidA) {
             for (const imgB of bidB) {
-                let { image: imageA, pageNumber: pageNumberA, width: widthA, height: heightA, } = imgA;
-                let { image: imageB, pageNumber: pageNumberB, width: widthB, height: heightB, } = imgB;
+                let { pageNumber: pageNumberA, width: widthA, height: heightA, } = imgA;
+                let { pageNumber: pageNumberB, width: widthB, height: heightB, } = imgB;
 
                 if (
                     widthA < this.options.minSize 
@@ -93,11 +97,19 @@ class ImageComparator {
                     // 图片尺寸小于最小尺寸，跳过
                     continue;
                 }
-
+                    
                 const sizeRatio = (heightA / widthA) / (heightB / widthB);
                 
                 if (sizeRatio < this.options.similarity || sizeRatio < (2 - this.options.similarity)) {
                     // 尺寸比例相差过大，跳过
+                    continue;
+                }
+
+                let imageA = imgA['image' + this.options.resize.width],
+                    imageB = imgB['image' + this.options.resize.width];
+
+                if (!imageA || !imageB) {
+                    // 没有对应尺寸的图片，跳过
                     continue;
                 }
 
