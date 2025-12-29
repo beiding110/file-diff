@@ -98,7 +98,7 @@ class ImageComparator {
             const sizeRatio = heightA / widthA / (heightB / widthB);
 
             // 尺寸比例相差过大，跳过
-            if (sizeRatio < this.options.similarity || sizeRatio < 2 - this.options.similarity) {
+            if (sizeRatio < this.options.similarity || sizeRatio > 2 - this.options.similarity) {
                 return false;
             }
 
