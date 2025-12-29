@@ -105,134 +105,159 @@ class TextComparator {
             return texts;
         }
 
-        log('TextComparator.js', 'removeBiddingContent', '即将生成任务列队');
-
-        const threadList = [];
-        const { texts: biddingTexts } = this.biddingContent;
-
-        // 构建任务列表
-        for (let pa of texts) {
-            const bList = [];
-
-            for (let pb of biddingTexts) {
-                const lengthRatio = pa.text.length / pb.text.length;
-
-                // 先过滤一遍，长度相差太多就过滤掉
-                if (lengthRatio < this.options.threshold || lengthRatio > 2 - this.options.threshold) {
-                    continue;
-                }
-
-                bList.push({
-                    b: pb.text,
-                    pageB: pb.pageNumber,
-                });
-            }
-
-            threadList.push({ a: pa.text, pageA: pa.pageNumber, bList });
-        }
-
-        log('TextComparator.js', 'removeBiddingContent', '生成任务列队完毕：', threadList.length);
-
         log('TextComparator.js', 'removeBiddingContent', '开始排除文字');
 
-        const result = await smartChunkProcessor.process(
-            threadList.map((threadItem) => {
-                return new Promise(async (resolve) => {
-                    const { a, pageA, bList } = threadItem;
+        const { texts: biddingTexts } = this.biddingContent;
 
-                    let someBiddingTextSimilarToTargetText = false;
+        // 定义过滤函数
+        const filterFn = (pa, pb) => {
+            const lengthRatio = pa.text.length / pb.text.length;
+            return lengthRatio >= this.options.threshold && lengthRatio <= 2 - this.options.threshold;
+        };
 
-                    for (let bItem of bList) {
-                        const { similarity } = await workerMultiThreading.handle({
-                            a,
-                            pageA,
-                            ...bItem,
-                        });
-
-                        if (similarity >= this.options.threshold) {
-                            someBiddingTextSimilarToTargetText = true;
-
-                            break;
-                        }
-                    }
-
-                    if (!someBiddingTextSimilarToTargetText) {
+        // 定义任务创建函数
+        const taskCreator = (pa, pb) => {
+            return new Promise((resolve) => {
+                workerMultiThreading
+                    .handle({
+                        a: pa.text,
+                        pageA: pa.pageNumber,
+                        b: pb.text,
+                        pageB: pb.pageNumber,
+                    })
+                    .then(({ similarity }) => {
+                        // 返回比对结果
                         resolve({
-                            text: a,
-                            pageNumber: pageA,
+                            textA: pa.text,
+                            pageA: pa.pageNumber,
+                            similarity,
                         });
-                    } else {
-                        resolve(false);
-                    }
+                    });
+            });
+        };
 
-                    progress && progress();
+        // 统计任务总数（用于进度条）
+        let totalTasks = 0;
+        for (const pa of texts) {
+            for (const pb of biddingTexts) {
+                if (filterFn(pa, pb)) {
+                    totalTasks++;
+                }
+            }
+        }
+
+        // 构建进度回调
+        const progressCallback = factoryProgress(totalTasks, progress);
+
+        // 使用流式处理获取所有比对结果
+        const allComparisons = await smartChunkProcessor.processDoubleLoop(texts, biddingTexts, taskCreator, filterFn, {
+            chunkSize: 500,
+            onProgress: progressCallback,
+            estimatedTotal: totalTasks,
+        });
+
+        // 按投标文本分组，找出没有与任何招标文本相似的文本
+        const textSimilarityMap = new Map();
+
+        for (const comparison of allComparisons) {
+            const key = `${comparison.pageA}_${comparison.textA}`;
+
+            if (!textSimilarityMap.has(key)) {
+                textSimilarityMap.set(key, false);
+            }
+
+            // 如果发现相似度达标，标记为 true
+            if (comparison.similarity >= this.options.threshold) {
+                textSimilarityMap.set(key, true);
+            }
+        }
+
+        // 过滤出没有相似度的文本
+        const result = [];
+        const seenKeys = new Set();
+
+        for (const comparison of allComparisons) {
+            const key = `${comparison.pageA}_${comparison.textA}`;
+
+            // 只保留没有相似度的文本，且每个文本只保留一次
+            if (!textSimilarityMap.get(key) && !seenKeys.has(key)) {
+                result.push({
+                    text: comparison.textA,
+                    pageNumber: comparison.pageA,
                 });
-            })
-        );
+                seenKeys.add(key);
+            }
+        }
 
         log('TextComparator.js', 'removeBiddingContent', '排除文字完毕：', result.length);
 
-        return result.filter((item) => item);
+        return result;
     }
 
     async compareTexts(sentencesA, sentencesB) {
-        const threadList = [];
+        log('TextComparator.js', 'compareTexts', '开始对比文字');
 
-        log('TextComparator.js', 'compareTexts', '即将生成任务列队');
+        // 定义过滤函数
+        const filterFn = (pa, pb) => {
+            const lengthRatio = pa.text.length / pb.text.length;
+            return lengthRatio >= this.options.threshold && lengthRatio <= 2 - this.options.threshold;
+        };
 
-        // 构建任务列表
-        for (let pa of sentencesA) {
-            for (let pb of sentencesB) {
-                const lengthRatio = pa.text.length / pb.text.length;
+        // 定义任务创建函数
+        const taskCreator = (pa, pb) => {
+            const threadItem = {
+                a: pa.text,
+                b: pb.text,
+                pageA: pa.pageNumber,
+                pageB: pb.pageNumber,
+            };
 
-                // 先过滤一遍，长度相差太多就过滤掉
-                if (lengthRatio < this.options.threshold || lengthRatio > 2 - this.options.threshold) {
-                    continue;
+            return new Promise((resolve) => {
+                workerMultiThreading.handle(threadItem).then(({ a, b, similarity }) => {
+                    if (similarity >= this.options.threshold) {
+                        resolve({
+                            a: {
+                                text: threadItem.a,
+                                textB: a,
+                                pageNumber: threadItem.pageA,
+                            },
+                            b: {
+                                text: threadItem.b,
+                                textB: b,
+                                pageNumber: threadItem.pageB,
+                            },
+                            similarity,
+                        });
+                    } else {
+                        resolve(null);
+                    }
+                });
+            });
+        };
+
+        // 统计任务总数（用于进度条）
+        let totalTasks = 0;
+        for (const pa of sentencesA) {
+            for (const pb of sentencesB) {
+                if (filterFn(pa, pb)) {
+                    totalTasks++;
                 }
-
-                threadList.push({ a: pa.text, b: pb.text, pageA: pa.pageNumber, pageB: pb.pageNumber });
             }
         }
 
-        log('TextComparator.js', 'compareTexts', '生成任务列队完毕：', threadList.length);
-
         // 构建进度回调
-        let progress = factoryProgress(threadList.length, this.progressHandler);
+        const progressCallback = factoryProgress(totalTasks, this.progressHandler);
 
-        log('TextComparator.js', 'compareTexts', '开始对比文字');
-
-        // 处理任务
-        const result = await smartChunkProcessor.process(
-            threadList.map((threadItem) => {
-                return new Promise((resolve) => {
-                    workerMultiThreading.handle(threadItem).then(({ a, b, similarity }) => {
-                        progress();
-
-                        if (similarity >= this.options.threshold) {
-                            resolve({
-                                a: {
-                                    text: threadItem.a,
-                                    textB: a,
-                                    pageNumber: threadItem.pageA,
-                                },
-                                b: {
-                                    text: threadItem.b,
-                                    textB: b,
-                                    pageNumber: threadItem.pageB,
-                                },
-                                similarity,
-                            });
-                        } else {
-                            resolve(null);
-                        }
-                    });
-                });
-            })
-        );
+        // 使用流式处理
+        const result = await smartChunkProcessor.processDoubleLoop(sentencesA, sentencesB, taskCreator, filterFn, {
+            chunkSize: 1000,
+            onProgress: progressCallback,
+            estimatedTotal: totalTasks,
+        });
 
         log('TextComparator.js', 'compareTexts', '对比文字完毕：', result.length);
 
-        return result.filter((item) => item);
+        return result;
     }
 }
 

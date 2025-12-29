@@ -61,7 +61,7 @@ function regWorker(type = 'multi') {
 regWorker('multi');
 
 class ImageComparator {
-    constructor({ 
+    constructor({
         similarity = 0.9, // 相似度目标
         resizeWidth = 300, // 对比时的统一大小，100/200/300
         minSize = 100, // 最小图片宽高，小于的不参与对比
@@ -78,82 +78,94 @@ class ImageComparator {
     static regWorker = regWorker;
 
     async compareImages(bidA, bidB) {
-        const threadList = [];
+        log('ImageComparator.js', 'compareImages', '开始对比图片');
 
-        log('ImageComparator.js', 'compareImages', '即将生成任务列队');
+        // 定义过滤函数
+        const filterFn = (imgA, imgB) => {
+            const { width: widthA, height: heightA } = imgA;
+            const { width: widthB, height: heightB } = imgB;
 
-        // 构建任务列表
+            // 图片尺寸小于最小尺寸，跳过
+            if (
+                widthA < this.options.minSize ||
+                heightA < this.options.minSize ||
+                widthB < this.options.minSize ||
+                heightB < this.options.minSize
+            ) {
+                return false;
+            }
+
+            const sizeRatio = heightA / widthA / (heightB / widthB);
+
+            // 尺寸比例相差过大，跳过
+            if (sizeRatio < this.options.similarity || sizeRatio < 2 - this.options.similarity) {
+                return false;
+            }
+
+            const imageA = imgA['image' + this.options.resize.width];
+            const imageB = imgB['image' + this.options.resize.width];
+
+            // 没有对应尺寸的图片，跳过
+            if (!imageA || !imageB) {
+                return false;
+            }
+
+            return true;
+        };
+
+        // 定义任务创建函数
+        const taskCreator = (imgA, imgB) => {
+            const { pageNumber: pageA } = imgA;
+            const { pageNumber: pageB } = imgB;
+            const imageA = imgA['image' + this.options.resize.width];
+            const imageB = imgB['image' + this.options.resize.width];
+
+            const threadItem = {
+                imgA: imageA,
+                imgB: imageB,
+                resize: this.options.resize,
+                pageA,
+                pageB,
+            };
+
+            return new Promise((resolve) => {
+                workerMultiThreading.handle(threadItem).then((similarity) => {
+                    if (similarity > this.options.similarity) {
+                        resolve({
+                            images: [threadItem.imgA, threadItem.imgB],
+                            pages: [threadItem.pageA, threadItem.pageB],
+                            similarity,
+                        });
+                    } else {
+                        resolve(null);
+                    }
+                });
+            });
+        };
+
+        // 统计任务总数（用于进度条）
+        let totalTasks = 0;
         for (const imgA of bidA) {
             for (const imgB of bidB) {
-                let { pageNumber: pageNumberA, width: widthA, height: heightA, } = imgA;
-                let { pageNumber: pageNumberB, width: widthB, height: heightB, } = imgB;
-
-                if (
-                    widthA < this.options.minSize 
-                    || heightA < this.options.minSize
-                    || widthB < this.options.minSize
-                    || heightB < this.options.minSize
-                ) {
-                    // 图片尺寸小于最小尺寸，跳过
-                    continue;
+                if (filterFn(imgA, imgB)) {
+                    totalTasks++;
                 }
-                    
-                const sizeRatio = (heightA / widthA) / (heightB / widthB);
-                
-                if (sizeRatio < this.options.similarity || sizeRatio < (2 - this.options.similarity)) {
-                    // 尺寸比例相差过大，跳过
-                    continue;
-                }
-
-                let imageA = imgA['image' + this.options.resize.width],
-                    imageB = imgB['image' + this.options.resize.width];
-
-                if (!imageA || !imageB) {
-                    // 没有对应尺寸的图片，跳过
-                    continue;
-                }
-
-                threadList.push({
-                    imgA: imageA,
-                    imgB: imageB,
-                    resize: this.options.resize,
-                    pageA: pageNumberA,
-                    pageB: pageNumberB,
-                });
             }
         }
 
-        log('ImageComparator.js', 'compareImages', '生成任务列队完毕：', threadList.length);
-
         // 构建进度回调
-        let progress = factoryProgress(threadList.length, this.processHandler);
+        const progressCallback = factoryProgress(totalTasks, this.processHandler);
 
-        log('ImageComparator.js', 'compareImages', '开始对比图片');
-
-        // 处理任务
-        const result = await smartChunkProcessor.process(
-            threadList.map((threadItem) => {
-                return new Promise((resolve) => {
-                    workerMultiThreading.handle(threadItem).then((similarity) => {
-                        progress();
-
-                        if (similarity > this.options.similarity) {
-                            resolve({
-                                images: [threadItem.imgA, threadItem.imgB],
-                                pages: [threadItem.pageA, threadItem.pageB],
-                                similarity,
-                            });
-                        } else {
-                            resolve(null);
-                        }
-                    });
-                });
-            })
-        );
+        // 使用流式处理
+        const result = await smartChunkProcessor.processDoubleLoop(bidA, bidB, taskCreator, filterFn, {
+            chunkSize: 500,
+            onProgress: progressCallback,
+            estimatedTotal: totalTasks,
+        });
 
         log('ImageComparator.js', 'compareImages', '对比图片结束：', result.length);
 
-        return result.filter((item) => item);
+        return result;
     }
 }
 
