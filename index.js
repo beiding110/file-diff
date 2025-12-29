@@ -56,8 +56,8 @@ class BidComparator {
 
     async across(bidFiles) {
         const bidDocs = await Promise.all(
-            bidFiles.map((file) => {
-                return workerMultiThreading.handle(file);
+            bidFiles.map(async (file) => {
+                return await workerMultiThreading.handle(file);
             })
         );
 
