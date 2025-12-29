@@ -22,7 +22,7 @@ BidComparator.updateSettings({
         threshold: 0.8,
         minLength: 15,
     },
-    images: {
+    image: {
         similarity: 0.9,
         resizeWidth: 100,
         minSize: 300,

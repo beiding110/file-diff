@@ -144,7 +144,7 @@ BidComparator.updateSettings({
         threshold: 0.8, // 相似程度阈值
         minLength: 15, // 最短句长
     },
-    images: {
+    image: {
         similarity: 0.9, // 相似程度阈值
         resizeWidth: 100, // 对比时统一尺寸
         minSize: 200, // 最小图片尺寸
