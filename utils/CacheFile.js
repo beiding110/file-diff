@@ -364,8 +364,8 @@ class CacheFile {
      * 用法2：传入组ID，返回该组下所有对比结果
      *   getResult('group-uuid') -> 读取 ./result/group-uuid/*.json 并返回数组
      *
-     * 用法3：不传参数，返回空数组
-     *   getResult() -> []
+     * 用法3：不传参数，返回之前缓存的所有结果
+     *   getResult() -> [...]
      */
     static getResult(filename) {
         let resultFolderPath = path.join(DIR_PATH, RESULT_FOLDER_PATH);
