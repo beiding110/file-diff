@@ -132,7 +132,7 @@ class ImageComparator {
                 workerMultiThreading.handle(threadItem).then((similarity) => {
                     if (similarity > this.options.similarity) {
                         resolve({
-                            images: [threadItem.imgA, threadItem.imgB],
+                            images: [imgA.image, imgB.image],
                             pages: [threadItem.pageA, threadItem.pageB],
                             similarity,
                         });
