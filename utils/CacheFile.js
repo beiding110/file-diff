@@ -317,31 +317,106 @@ class CacheFile {
         return targetPath;
     }
 
+    /**
+     * 增量保存单个对比结果（优化内存使用）
+     * @param {Object} resultItem - 单个对比结果对象
+     * @param {String} groupid - 组ID
+     * @param {String} uuid - 结果唯一标识
+     * @returns {String} 保存的文件路径
+     */
+    static appendResult(resultItem, groupid, uuid) {
+        // 判断缓存文件夹
+        if (!fs.existsSync(DIR_PATH)) {
+            fs.mkdirSync(DIR_PATH);
+        }
+
+        // 判断结果文件夹
+        let resultFolderPath = path.join(DIR_PATH, RESULT_FOLDER_PATH);
+
+        if (!fs.existsSync(resultFolderPath)) {
+            fs.mkdirSync(resultFolderPath);
+        }
+
+        // 创建组文件夹
+        let groupFolderPath = path.join(resultFolderPath, `./${groupid}`);
+
+        if (!fs.existsSync(groupFolderPath)) {
+            fs.mkdirSync(groupFolderPath);
+        }
+
+        // 保存单个结果文件，使用 uuid 作为文件名
+        const resultFileName = `./${uuid}.json`;
+        const targetPath = path.join(groupFolderPath, resultFileName);
+
+        fs.writeFileSync(targetPath, JSON.stringify(resultItem, null, 4));
+
+        return targetPath;
+    }
+
+    /**
+     * 获取对比结果
+     * @param {String} filename - 文件名或组ID（可选）
+     * @returns {Array|Object|null} 对比结果
+     *
+     * 用法1：传入文件名，返回单个 JSON 文件内容
+     *   getResult('abc123') -> 读取 ./result/abc123.json
+     *
+     * 用法2：传入组ID，返回该组下所有对比结果
+     *   getResult('group-uuid') -> 读取 ./result/group-uuid/*.json 并返回数组
+     *
+     * 用法3：不传参数，返回空数组
+     *   getResult() -> []
+     */
     static getResult(filename) {
-        let folderPath = path.join(DIR_PATH, RESULT_FOLDER_PATH);
+        let resultFolderPath = path.join(DIR_PATH, RESULT_FOLDER_PATH);
 
         if (filename) {
-            // 获取具体文件
-            const resultFileName = `./${filename}.json`;
-            const targetPath = path.join(folderPath, resultFileName);
+            // 检查是旧格式的文件还是新格式的组文件夹
+            const filePath = path.join(resultFolderPath, `./${filename}.json`);
+            const groupFolderPath = path.join(resultFolderPath, `./${filename}`);
 
-            if (!fs.existsSync(targetPath)) {
-                return null;
+            // 如果是文件（旧格式）
+            if (fs.existsSync(filePath)) {
+                const context = fs.readFileSync(filePath);
+                return JSON.parse(context);
             }
 
-            const context = fs.readFileSync(targetPath);
+            // 如果是组文件夹
+            if (fs.existsSync(groupFolderPath) && fs.statSync(groupFolderPath).isDirectory()) {
+                // 读取组文件夹下所有的 json 文件
+                const files = fs.readdirSync(groupFolderPath);
+                const jsonFiles = files.filter((file) => file.endsWith('.json'));
 
-            return JSON.parse(context);
+                // 按文件名排序
+                jsonFiles.sort();
+
+                // 逐个读取文件并合并结果
+                const results = [];
+
+                for (const jsonFile of jsonFiles) {
+                    try {
+                        const itemPath = path.join(groupFolderPath, jsonFile);
+                        const content = fs.readFileSync(itemPath, 'utf-8');
+                        const result = JSON.parse(content);
+                        results.push(result);
+                    } catch (error) {
+                        log('CacheFile.js', 'getResult', `读取文件 ${jsonFile} 失败:`, error.message);
+                    }
+                }
+
+                return results;
+            }
+
+            return null;
         }
 
         // 获取全部文件
-        if (!fs.existsSync(folderPath)) {
+        if (!fs.existsSync(resultFolderPath)) {
             return [];
         }
 
-        const files = getAllFilesInfo(folderPath);
-
-        return files
+        const files = _getAllFilesInfo(resultFolderPath);
+        const jsonContext = files
             .filter((file) => {
                 return /\.(json)$/.test(file.name);
             })
@@ -350,10 +425,17 @@ class CacheFile {
 
                 return JSON.parse(context);
             });
+
+        return _groupBy(jsonContext, 'groupid');
     }
 }
 
-function getAllFilesInfo(dirPath) {
+/**
+ * 深度获取文件夹地址下所有文件（夹）
+ * @param {String} dirPath 文件夹地址
+ * @returns
+ */
+function _getAllFilesInfo(dirPath) {
     const itemsInfo = [];
 
     function traverseDirectory(currentPath) {
@@ -363,25 +445,63 @@ function getAllFilesInfo(dirPath) {
             const itemPath = path.join(currentPath, item);
             const stat = fs.statSync(itemPath);
 
-            if (stat.isFile() || stat.isDirectory()) {
+            const statIsDir = stat.isDirectory();
+
+            if (stat.isFile() || statIsDir) {
                 itemsInfo.push({
                     name: item,
                     path: itemPath,
                     size: stat.size,
                     createdAt: stat.ctime,
                     modifiedAt: stat.mtime,
-                    isDirectory: stat.isDirectory(),
+                    isDirectory: statIsDir,
                 });
             }
 
-            if (stat.isDirectory()) {
+            if (statIsDir) {
                 traverseDirectory(itemPath);
             }
         }
     }
 
     traverseDirectory(dirPath);
+
     return itemsInfo;
+}
+
+/**
+ * 将数组按条件分组，条件可以是函数，也可以是字段名（没有字段的项不参与分组，直接返回在结果中）
+ * @param {Array} arr 待分组的数组
+ * @param {Function|String} filter 分组函数或分组字段
+ * @returns 分组结果数组
+ */
+function _groupBy(arr, filter) {
+    const groupMap = {};
+    const result = [];
+
+    arr.forEach((item) => {
+        if (typeof filter === 'function') {
+            let key = filter(item);
+
+            groupMap[key] = groupMap[key] || [];
+
+            groupMap[key].push(item);
+        }
+
+        if (typeof filter === 'string') {
+            let key = item[filter];
+
+            if (key) {
+                groupMap[key] = groupMap[key] || [];
+
+                groupMap[key].push(item);
+            } else {
+                result.push(item);
+            }
+        }
+    });
+
+    return [...Object.values(groupMap), ...result];
 }
 
 module.exports = CacheFile;

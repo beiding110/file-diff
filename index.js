@@ -138,17 +138,11 @@ class BidComparator {
 
             result.groupid = GROUPID;
 
-            // 缓存本次结果，最后一次循环结束后，缓存了完整结果
-            let cachedResult = CacheFile.getResult(GROUPID);
-            if (!cachedResult) {
-                // 首个结果
-                cachedResult = [];
-            }
-            cachedResult.push(result);
-            CacheFile.saveResult(cachedResult, GROUPID);
+            // 增量保存单个结果，避免内存累积（优化后）
+            CacheFile.appendResult(result, GROUPID, result.uuid);
         }
 
-        // 返回完整结果
+        // 返回完整结果（一次性读取所有结果）
         let cachedResult = CacheFile.getResult(GROUPID);
 
         return cachedResult;
