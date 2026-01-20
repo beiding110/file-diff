@@ -1,14 +1,6 @@
-const nodejieba = require('nodejieba');
-const path = require('node:path');
+const nodejieba = require('../jiebaCustom/index.js');
 
 const deduplicationArray = require('./util/deduplicationArray.js');
-
-const userDict = path.join(__dirname, './userdict.utf8');
-
-nodejieba.load({
-    dict: nodejieba.DEFAULT_DICT,
-    userDict,
-});
 
 const REG_PUNCTUATION = require('./punctuation.js'); // 不可能在实体中出现的符号
 
