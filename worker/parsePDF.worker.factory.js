@@ -191,13 +191,13 @@ module.exports = function (thisFileName) {
                 }
 
                 // 缓存图片
-                let imgPath = await cacheFile.saveImage({ data, width, height, name });
+                let imgInfo = await cacheFile.saveImage({ data, width, height, name });
 
-                if (imgPath) {
+                if (imgInfo) {
                     images.push({
                         name,
                         pageNumber,
-                        ...imgPath,
+                        ...imgInfo,
                         width,
                         height,
                     });

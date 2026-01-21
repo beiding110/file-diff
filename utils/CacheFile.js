@@ -204,15 +204,10 @@ class CacheFile {
 
         const result = {
             image: '',
-            image300: '',
-            image200: '',
-            image100: '',
+            imageHash: '',
         };
 
         const fileSavePath = path.join(targetPath, `./${name}.png`);
-        const fileSavePath300 = path.join(targetPath, `./${name}.300.png`);
-        const fileSavePath200 = path.join(targetPath, `./${name}.200.png`);
-        const fileSavePath100 = path.join(targetPath, `./${name}.100.png`);
 
         if (this.checkFileExist(fileSavePath)) {
             // 已经存在，则不进行重新存放
@@ -233,36 +228,13 @@ class CacheFile {
                 },
             });
 
+            // 计算hash
+            result.imageHash = await _getImageHash(orgImg);
+
             // 原图
             orgImg.png().toFile(fileSavePath);
+
             result.image = fileSavePath;
-
-            // 灰度处理
-            orgImg.grayscale();
-            // 300
-            if (width > 300) {
-                let img = orgImg.clone().resize({ width: 300 });
-
-                img.png().toFile(fileSavePath300);
-
-                result.image300 = fileSavePath300;
-            }
-            // 200
-            if (width > 200) {
-                let img = orgImg.clone().resize({ width: 200 });
-
-                img.png().toFile(fileSavePath200);
-
-                result.image200 = fileSavePath200;
-            }
-            // 100
-            if (width > 100) {
-                let img = orgImg.clone().resize({ width: 100 });
-
-                img.png().toFile(fileSavePath100);
-
-                result.image100 = fileSavePath100;
-            }
 
             log('CacheFile.js', 'saveImage', '缓存图片完毕：', fileSavePath);
         } catch (e) {
@@ -502,6 +474,21 @@ function _groupBy(arr, filter) {
     });
 
     return [...Object.values(groupMap), ...result];
+}
+
+async function _getImageHash(sharpObj) {
+    const resized = await sharpObj
+        .clone()
+        .resize(10, 10, {
+            fit: 'fill',
+        })
+        .grayscale()
+        .raw()
+        .toBuffer();
+
+    const avg = resized.reduce((sum, val) => sum + val, 0) / resized.length;
+
+    return resized.map((val) => (val > avg ? '1' : '0')).join('');
 }
 
 module.exports = CacheFile;

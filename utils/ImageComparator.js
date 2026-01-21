@@ -63,12 +63,10 @@ regWorker('multi');
 class ImageComparator {
     constructor({
         similarity = 0.9, // 相似度目标
-        resizeWidth = 300, // 对比时的统一大小，100/200/300
         minSize = 100, // 最小图片宽高，小于的不参与对比
     }) {
         this.options = {
             similarity,
-            resize: { width: resizeWidth },
             minSize,
         };
 
@@ -102,44 +100,33 @@ class ImageComparator {
                 return false;
             }
 
-            const imageA = imgA['image' + this.options.resize.width];
-            const imageB = imgB['image' + this.options.resize.width];
-
-            // 没有对应尺寸的图片，跳过
-            if (!imageA || !imageB) {
-                return false;
-            }
-
             return true;
         };
 
         // 定义任务创建函数
         const taskCreator = (imgA, imgB) => {
-            const { pageNumber: pageA } = imgA;
-            const { pageNumber: pageB } = imgB;
-            const imageA = imgA['image' + this.options.resize.width];
-            const imageB = imgB['image' + this.options.resize.width];
-
-            const threadItem = {
-                imgA: imageA,
-                imgB: imageB,
-                resize: this.options.resize,
-                pageA,
-                pageB,
-            };
+            const { pageNumber: pageA, imageHash: imageHashA } = imgA;
+            const { pageNumber: pageB, imageHash: imageHashB } = imgB;
 
             return new Promise((resolve) => {
-                workerMultiThreading.handle(threadItem).then((similarity) => {
-                    if (similarity > this.options.similarity) {
-                        resolve({
-                            images: [imgA.image, imgB.image],
-                            pages: [threadItem.pageA, threadItem.pageB],
-                            similarity,
-                        });
-                    } else {
-                        resolve(null);
-                    }
-                });
+                workerMultiThreading
+                    .handle({
+                        hashA: imageHashA,
+                        hashB: imageHashB,
+                        pageA,
+                        pageB,
+                    })
+                    .then((similarity) => {
+                        if (similarity > this.options.similarity) {
+                            resolve({
+                                images: [imgA.image, imgB.image],
+                                pages: [imgA.pageNumber, imgB.pageNumber],
+                                similarity,
+                            });
+                        } else {
+                            resolve(null);
+                        }
+                    });
             });
         };
 

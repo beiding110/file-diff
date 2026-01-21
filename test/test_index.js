@@ -24,7 +24,6 @@ BidComparator.updateSettings({
     },
     image: {
         similarity: 0.9,
-        resizeWidth: 100,
         minSize: 300,
     },
 });

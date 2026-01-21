@@ -187,7 +187,6 @@ class BidComparator {
                 },
                 image: {
                     similarity: this.imageComparator.options.similarity,
-                    resizeWidth: this.imageComparator.options.resize.width,
                     minSize: this.imageComparator.options.minSize,
                 },
             },
@@ -273,14 +272,10 @@ class BidComparator {
         }
 
         if (image) {
-            const { similarity, resizeWidth, minSize } = image;
+            const { similarity, minSize } = image;
 
             if (similarity) {
                 _STORE_SETTINGS_IMAGE.similarity = similarity;
-            }
-
-            if (resizeWidth) {
-                _STORE_SETTINGS_IMAGE.resizeWidth = resizeWidth;
             }
 
             if (minSize) {
