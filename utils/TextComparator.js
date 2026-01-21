@@ -112,7 +112,13 @@ class TextComparator {
         // 定义过滤函数
         const filterFn = (pa, pb) => {
             const lengthRatio = pa.text.length / pb.text.length;
-            return lengthRatio >= this.options.threshold && lengthRatio <= 2 - this.options.threshold;
+
+            if (!(lengthRatio >= this.options.threshold && lengthRatio <= 2 - this.options.threshold)) {
+                // 句长差值过大
+                return false;
+            }
+
+            return true;
         };
 
         // 定义任务创建函数
@@ -122,8 +128,13 @@ class TextComparator {
                     .handle({
                         a: pa.text,
                         pageA: pa.pageNumber,
+                        vectorA: pa.vector,
+
                         b: pb.text,
                         pageB: pb.pageNumber,
+                        vectorB: pb.vector,
+
+                        threshold: this.options.threshold,
                     })
                     .then(({ similarity }) => {
                         // 返回比对结果
@@ -200,16 +211,27 @@ class TextComparator {
         // 定义过滤函数
         const filterFn = (pa, pb) => {
             const lengthRatio = pa.text.length / pb.text.length;
-            return lengthRatio >= this.options.threshold && lengthRatio <= 2 - this.options.threshold;
+
+            if (!(lengthRatio >= this.options.threshold && lengthRatio <= 2 - this.options.threshold)) {
+                // 句长差值过大
+                return false;
+            }
+
+            return true;
         };
 
         // 定义任务创建函数
         const taskCreator = (pa, pb) => {
             const threadItem = {
                 a: pa.text,
-                b: pb.text,
                 pageA: pa.pageNumber,
+                vectorA: pa.vector,
+
+                b: pb.text,
                 pageB: pb.pageNumber,
+                vectorB: pb.vector,
+
+                threshold: this.options.threshold,
             };
 
             return new Promise((resolve) => {

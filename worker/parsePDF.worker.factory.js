@@ -50,6 +50,7 @@ module.exports = function (thisFileName) {
         const CacheFile = require('../utils/CacheFile.js');
         const { log, setCustomHandler } = require('../utils/log.js');
         const factoryProgress = require('../utils/factoryProgress.js');
+        const vectorComparator = require('../utils/vectorComparator.js');
 
         const EventCenter = require('./EventCenter.js');
 
@@ -154,9 +155,12 @@ module.exports = function (thisFileName) {
                     return;
                 }
 
+                const vector = vectorComparator.getVector(text);
+
                 let page = {
                     pageNumber,
                     text,
+                    vector,
                 };
 
                 pageTexts.push(page);

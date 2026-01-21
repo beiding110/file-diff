@@ -3,7 +3,7 @@ module.exports = function (thisFileName) {
 
     if (isMainThread) {
         const { log } = require('../utils/log.js');
-        
+
         const worker = new Worker(thisFileName);
 
         worker.on('error', (error) => {
@@ -11,12 +11,9 @@ module.exports = function (thisFileName) {
         });
 
         return {
-            diffWords({ a, b }) {
+            diffWords(json) {
                 return new Promise((resolve, reject) => {
-                    worker.postMessage({
-                        a,
-                        b,
-                    });
+                    worker.postMessage(json);
 
                     worker.once('message', (diff) => {
                         resolve(diff);
@@ -26,6 +23,7 @@ module.exports = function (thisFileName) {
         };
     } else {
         const Diff = require('diff');
+        const vectorComparator = require('../utils/vectorComparator.js');
 
         function calculateSentenceSimilarity(diff, a, b) {
             let sameCount = 0;
@@ -56,14 +54,25 @@ module.exports = function (thisFileName) {
             };
         }
 
-        parentPort.on('message', ({ a, b }) => {
+        parentPort.on('message', ({ a, vectorA, b, vectorB, threshold }) => {
+            if (vectorA && vectorB) {
+                const vsimilarity = vectorComparator.calculateCosineSimilarity(vectorA, vectorB);
+
+                if (vsimilarity < threshold) {
+                    parentPort.postMessage({
+                        similarity: vsimilarity,
+                    });
+
+                    return;
+                }
+            }
+
             const diff = Diff.diffWords(a, b);
 
             const res = calculateSentenceSimilarity(diff, a, b);
 
             parentPort.postMessage(res);
         });
-
 
         return null;
     }
