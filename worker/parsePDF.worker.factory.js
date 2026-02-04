@@ -51,6 +51,7 @@ module.exports = function (thisFileName) {
         const { log, setCustomHandler } = require('../utils/log.js');
         const factoryProgress = require('../utils/factoryProgress.js');
         const vectorComparator = require('../utils/vectorComparator.js');
+        const EntityExtracter = require('../utils/EntityExtracter/index.js');
 
         const EventCenter = require('./EventCenter.js');
 
@@ -109,6 +110,8 @@ module.exports = function (thisFileName) {
 
             pdf.cleanup();
 
+            const entities = _getPageEntities(texts);
+
             log('parsePDF.worker.factory.js', 'parsePDF', '逐页解析PDF文件完毕');
 
             const resloved = {
@@ -118,6 +121,7 @@ module.exports = function (thisFileName) {
                 metadata: metadata.info,
                 texts,
                 images,
+                entities,
             };
 
             log('parsePDF.worker.factory.js', 'parsePDF', '开始缓存解析结果');
@@ -463,6 +467,23 @@ module.exports = function (thisFileName) {
             promiseList = null;
 
             return imgs;
+        }
+
+        // 获取实体
+        function _getPageEntities(texts) {
+            let entities = [];
+
+            texts.forEach(({ text }) => {
+                const entityExtracter = new EntityExtracter(text);
+
+                const entity = entityExtracter.extract();
+
+                entityExtracter.destroy();
+
+                entities = [...entities, ...entity];
+            });
+
+            return EntityExtracter.deduplication(entities);
         }
 
         eventCetner.on('parsePDF', async (filePath) => {
