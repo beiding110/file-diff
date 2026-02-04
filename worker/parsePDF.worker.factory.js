@@ -105,7 +105,7 @@ module.exports = function (thisFileName) {
                     _getPageImages({ page, pageNumber, cacheFile }), // 本页中的图片
                 ]);
 
-                // 优化：直接赋值而非使用展开运算符，避免创建临时数组
+                // 直接赋值而非使用展开运算符，避免创建临时数组
                 for (let i = 0; i < pageTexts.length; i++) {
                     texts[textIndex++] = pageTexts[i];
                 }
@@ -126,7 +126,7 @@ module.exports = function (thisFileName) {
                 }
             }
 
-            // 优化：截取实际使用的部分
+            // 截取实际使用的部分
             texts.length = textIndex;
             images.length = imageIndex;
 

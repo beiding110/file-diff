@@ -50,8 +50,8 @@ class BidComparator {
         return workerMultiThreading.handle(file);
     }
 
-    static history(file) {
-        return CacheFile.getResult(file);
+    static async history(file) {
+        return await CacheFile.getResult(file);
     }
 
     async across(bidFiles) {
@@ -150,8 +150,8 @@ class BidComparator {
 
             result.groupid = GROUPID;
 
-            // 增量保存单个结果，避免内存累积（优化后）
-            CacheFile.appendResult(result, GROUPID, result.uuid);
+            // 增量保存单个结果，避免内存累积
+            await CacheFile.appendResult(result, GROUPID, result.uuid);
 
             // 保留当前使用的两个文件，清除其他文件的引用
             const neededHashes = new Set([files[0].fileHash, files[1].fileHash]);

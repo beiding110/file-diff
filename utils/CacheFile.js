@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 const { log } = require('../utils/log.js');
+const asyncFileUtils = require('./asyncFileUtils.js');
 
 var DIR_PATH = path.join(__dirname, '../cache');
 
@@ -212,26 +213,7 @@ class CacheFile {
         }
 
         // 使用流式复制，避免同步阻塞
-        await new Promise((resolve, reject) => {
-            const reader = fs.createReadStream(fromFileUrl);
-            const writer = fs.createWriteStream(pdfPath);
-
-            reader.on('error', (err) => {
-                log('CacheFile.js', 'savePdf', '读取源文件失败:', err.message);
-                reject(err);
-            });
-
-            writer.on('error', (err) => {
-                log('CacheFile.js', 'savePdf', '写入目标文件失败:', err.message);
-                reject(err);
-            });
-
-            writer.on('finish', () => {
-                resolve();
-            });
-
-            reader.pipe(writer);
-        });
+        await asyncFileUtils.copyFile(fromFileUrl, pdfPath);
 
         return {
             pdfPath,
@@ -285,7 +267,7 @@ class CacheFile {
             result.imageHash = await _getImageHash(orgImg);
 
             // 原图
-            orgImg.png().toFile(fileSavePath);
+            await orgImg.png().toFile(fileSavePath);
 
             result.image = fileSavePath;
 
@@ -313,46 +295,27 @@ class CacheFile {
         }
 
         // 使用异步写入，避免阻塞
-        await new Promise((resolve, reject) => {
-            const writer = fs.createWriteStream(targetPath);
-
-            writer.on('error', (err) => {
-                log('CacheFile.js', 'saveParseInfo', '写入解析结果失败:', err.message);
-                reject(err);
-            });
-
-            writer.on('finish', () => {
-                resolve();
-            });
-
-            writer.write(JSON.stringify(json, null, 4));
-            writer.end();
-        });
+        await asyncFileUtils.writeJsonFile(targetPath, json, { formatted: true });
 
         return targetPath;
     }
 
     // 保存结果
-    static saveResult(json, filename) {
-        // 判断缓存文件夹
-        if (!fs.existsSync(DIR_PATH)) {
-            fs.mkdirSync(DIR_PATH);
-        }
+    static async saveResult(json, filename) {
+        // 使用异步工具函数
+        const folderPath = path.join(DIR_PATH, RESULT_FOLDER_PATH);
 
-        // 判断结果文件夹
-        let folderPath = path.join(DIR_PATH, RESULT_FOLDER_PATH);
-
-        if (!fs.existsSync(folderPath)) {
-            fs.mkdirSync(folderPath);
-        }
+        // 确保目录存在
+        await asyncFileUtils.ensureDir(DIR_PATH);
+        await asyncFileUtils.ensureDir(folderPath);
 
         // 进行存储
         const resultFileExtraName = filename || new Date().getTime();
         const resultFileName = `./${resultFileExtraName}.json`;
-
         const targetPath = path.join(folderPath, resultFileName);
 
-        fs.writeFileSync(targetPath, JSON.stringify(json, null, 4));
+        // 使用异步写入 JSON（不格式化，节省空间）
+        await asyncFileUtils.writeJsonFile(targetPath, json, { formatted: true });
 
         return targetPath;
     }
@@ -362,33 +325,24 @@ class CacheFile {
      * @param {Object} resultItem - 单个对比结果对象
      * @param {String} groupid - 组ID
      * @param {String} uuid - 结果唯一标识
-     * @returns {String} 保存的文件路径
+     * @returns {Promise<String>} 保存的文件路径
      */
-    static appendResult(resultItem, groupid, uuid) {
-        // 判断缓存文件夹
-        if (!fs.existsSync(DIR_PATH)) {
-            fs.mkdirSync(DIR_PATH);
-        }
+    static async appendResult(resultItem, groupid, uuid) {
+        // 使用异步工具函数
+        const resultFolderPath = path.join(DIR_PATH, RESULT_FOLDER_PATH);
+        const groupFolderPath = path.join(resultFolderPath, `./${groupid}`);
 
-        // 判断结果文件夹
-        let resultFolderPath = path.join(DIR_PATH, RESULT_FOLDER_PATH);
-
-        if (!fs.existsSync(resultFolderPath)) {
-            fs.mkdirSync(resultFolderPath);
-        }
-
-        // 创建组文件夹
-        let groupFolderPath = path.join(resultFolderPath, `./${groupid}`);
-
-        if (!fs.existsSync(groupFolderPath)) {
-            fs.mkdirSync(groupFolderPath);
-        }
+        // 确保目录存在
+        await asyncFileUtils.ensureDir(DIR_PATH);
+        await asyncFileUtils.ensureDir(resultFolderPath);
+        await asyncFileUtils.ensureDir(groupFolderPath);
 
         // 保存单个结果文件，使用 uuid 作为文件名
         const resultFileName = `./${uuid}.json`;
         const targetPath = path.join(groupFolderPath, resultFileName);
 
-        fs.writeFileSync(targetPath, JSON.stringify(resultItem, null, 4));
+        // 使用异步写入 JSON（不格式化，节省空间）
+        await asyncFileUtils.writeJsonFile(targetPath, resultItem, { formatted: true });
 
         return targetPath;
     }
@@ -396,7 +350,7 @@ class CacheFile {
     /**
      * 获取对比结果
      * @param {String} filename - 文件名或组ID（可选）
-     * @returns {Array|Object|null} 对比结果
+     * @returns {Promise<Array|Object|null>} 对比结果
      *
      * 用法1：传入文件名，返回单个 JSON 文件内容
      *   getResult('abc123') -> 读取 ./result/abc123.json
@@ -407,7 +361,7 @@ class CacheFile {
      * 用法3：不传参数，返回之前缓存的所有结果
      *   getResult() -> [...]
      */
-    static getResult(filename) {
+    static async getResult(filename) {
         let resultFolderPath = path.join(DIR_PATH, RESULT_FOLDER_PATH);
 
         if (filename) {
@@ -417,34 +371,13 @@ class CacheFile {
 
             // 如果是文件（旧格式）
             if (fs.existsSync(filePath)) {
-                const context = fs.readFileSync(filePath);
-                return JSON.parse(context);
+                return await asyncFileUtils.readJsonFile(filePath);
             }
 
             // 如果是组文件夹
             if (fs.existsSync(groupFolderPath) && fs.statSync(groupFolderPath).isDirectory()) {
-                // 读取组文件夹下所有的 json 文件
-                const files = fs.readdirSync(groupFolderPath);
-                const jsonFiles = files.filter((file) => file.endsWith('.json'));
-
-                // 按文件名排序
-                jsonFiles.sort();
-
-                // 逐个读取文件并合并结果
-                const results = [];
-
-                for (const jsonFile of jsonFiles) {
-                    try {
-                        const itemPath = path.join(groupFolderPath, jsonFile);
-                        const content = fs.readFileSync(itemPath, 'utf-8');
-                        const result = JSON.parse(content);
-                        results.push(result);
-                    } catch (error) {
-                        log('CacheFile.js', 'getResult', `读取文件 ${jsonFile} 失败:`, error.message);
-                    }
-                }
-
-                return results;
+                // 使用异步批量读取
+                return await asyncFileUtils.readJsonFiles(groupFolderPath);
             }
 
             return null;
@@ -456,15 +389,19 @@ class CacheFile {
         }
 
         const files = _getAllFilesInfo(resultFolderPath);
-        const jsonContext = files
-            .filter((file) => {
-                return /\.(json)$/.test(file.name);
-            })
-            .map((item) => {
-                const context = fs.readFileSync(item.path);
+        const jsonContext = [];
 
-                return JSON.parse(context);
-            });
+        // 异步读取所有 JSON 文件
+        for (const item of files) {
+            if (/\.(json)$/.test(item.name)) {
+                try {
+                    const context = await asyncFileUtils.readJsonFile(item.path);
+                    jsonContext.push(context);
+                } catch (error) {
+                    log('CacheFile.js', 'getResult', `读取文件失败:`, item.path, error.message);
+                }
+            }
+        }
 
         return _groupBy(jsonContext, 'groupid');
     }

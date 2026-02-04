@@ -4,8 +4,7 @@
  * @returns Object 向量化后的数据
  */
 function getVector(str) {
-    // 使用结巴分词提取关键词及其权重（或简单计数）
-    // const words = nodejieba.cut(str);
+    // 使用提取关键词及其权重（或简单计数）
     const words = str.split('');
     const freqMap = {};
 
@@ -27,7 +26,7 @@ function calculateCosineSimilarity(vec1, vec2) {
     let mag1 = 0;
     let mag2 = 0;
 
-    // 优化：单次循环处理相似度
+    // 单次循环处理相似度
     for (const key in vec1) {
         if (vec2[key]) dotProduct += vec1[key] * vec2[key];
         mag1 += vec1[key] ** 2;
