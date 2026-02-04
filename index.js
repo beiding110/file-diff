@@ -109,6 +109,9 @@ class BidComparator {
 
         const GROUPID = uuidv4();
 
+        // 使用 Map 缓存已加载的文件，避免重复读取
+        const loadedFilesCache = new Map();
+
         for (let i = 0; i < this.bidDocsMatrix.length; i++) {
             let { id, files } = this.bidDocsMatrix[i];
 
@@ -127,9 +130,18 @@ class BidComparator {
                 this.imageComparator.processHandler = this.imageCompareProgressHandlerFactory(id);
             }
 
-            // 读取完整解析结果
-            const fileL = CacheFile.readCacheByHash(files[0].fileHash),
-                fileR = CacheFile.readCacheByHash(files[1].fileHash);
+            // 优化：从缓存读取或从文件加载（避免重复读取，支持异步）
+            const getFile = async (fileHash) => {
+                if (!loadedFilesCache.has(fileHash)) {
+                    const data = CacheFile.readCacheByHash(fileHash);
+                    // readCacheByHash 可能返回 Promise（大文件）或直接返回结果（小文件）
+                    loadedFilesCache.set(fileHash, data instanceof Promise ? await data : data);
+                }
+                return loadedFilesCache.get(fileHash);
+            };
+
+            const fileL = await getFile(files[0].fileHash);
+            const fileR = await getFile(files[1].fileHash);
 
             // 进行比对
             const result = await this.compareBids(fileL, fileR, id);
@@ -140,12 +152,18 @@ class BidComparator {
 
             // 增量保存单个结果，避免内存累积（优化后）
             CacheFile.appendResult(result, GROUPID, result.uuid);
+
+            // 保留当前使用的两个文件，清除其他文件的引用
+            const neededHashes = new Set([files[0].fileHash, files[1].fileHash]);
+            for (const [hash] of loadedFilesCache) {
+                if (!neededHashes.has(hash)) {
+                    loadedFilesCache.delete(hash);
+                }
+            }
         }
 
-        // 返回完整结果（一次性读取所有结果）
-        let cachedResult = CacheFile.getResult(GROUPID);
-
-        return cachedResult;
+        // 调用方可以通过 CacheFile.getResult(GROUPID) 按需读取
+        return GROUPID;
     }
 
     async compareBids(bidA, bidB, id) {

@@ -86,8 +86,14 @@ module.exports = function (thisFileName) {
                 eventCetner.post('progress', filePath, ...args);
             });
 
-            let texts = [];
-            let images = [];
+            // 预分配数组大小，避免频繁扩容。估算每页平均约50个文本和10个图片
+            const estimatedTexts = pdf.numPages * 50;
+            const estimatedImages = pdf.numPages * 10;
+
+            let texts = new Array(estimatedTexts);
+            let images = new Array(estimatedImages);
+            let textIndex = 0;
+            let imageIndex = 0;
 
             log('parsePDF.worker.factory.js', 'parsePDF', '开始逐页解析PDF文件');
 
@@ -99,13 +105,30 @@ module.exports = function (thisFileName) {
                     _getPageImages({ page, pageNumber, cacheFile }), // 本页中的图片
                 ]);
 
-                texts = [...texts, ...pageTexts];
-                images = [...images, ...pageImages];
+                // 优化：直接赋值而非使用展开运算符，避免创建临时数组
+                for (let i = 0; i < pageTexts.length; i++) {
+                    texts[textIndex++] = pageTexts[i];
+                }
+                for (let i = 0; i < pageImages.length; i++) {
+                    images[imageIndex++] = pageImages[i];
+                }
 
                 page.cleanup();
 
                 progress();
+
+                // 每处理10页主动清理一次，避免内存累积
+                if (pageNumber % 10 === 0) {
+                    // 垃圾回收
+                    if (global.gc) {
+                        global.gc();
+                    }
+                }
             }
+
+            // 优化：截取实际使用的部分
+            texts.length = textIndex;
+            images.length = imageIndex;
 
             pdf.cleanup();
 

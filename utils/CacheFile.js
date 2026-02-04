@@ -41,9 +41,42 @@ class CacheFile {
         let parseFilePath = path.join(DIR_PATH, FILE_FOLDER_PATH, `./${hash}`, PARSE_FILE_NAME);
 
         if (fs.existsSync(parseFilePath)) {
-            let context = fs.readFileSync(parseFilePath);
+            // 使用流式读取以减少内存峰值
+            try {
+                // 对于小文件（<10MB），使用原有同步方式
+                const stats = fs.statSync(parseFilePath);
+                if (stats.size < 10 * 1024 * 1024) {
+                    const context = fs.readFileSync(parseFilePath);
+                    return JSON.parse(context);
+                }
 
-            return JSON.parse(context);
+                // 对于大文件，使用异步流式读取
+                return new Promise((resolve, reject) => {
+                    const stream = fs.createReadStream(parseFilePath, { encoding: 'utf8' });
+                    let data = '';
+
+                    stream.on('data', (chunk) => {
+                        data += chunk;
+                    });
+
+                    stream.on('end', () => {
+                        try {
+                            resolve(JSON.parse(data));
+                        } catch (error) {
+                            log('CacheFile.js', 'readCacheByHash', '解析缓存文件失败:', hash, error.message);
+                            reject(error);
+                        }
+                    });
+
+                    stream.on('error', (error) => {
+                        log('CacheFile.js', 'readCacheByHash', '读取缓存文件失败:', hash, error.message);
+                        reject(error);
+                    });
+                });
+            } catch (error) {
+                log('CacheFile.js', 'readCacheByHash', '读取缓存出错:', hash, error.message);
+                return false;
+            }
         }
 
         return false;
