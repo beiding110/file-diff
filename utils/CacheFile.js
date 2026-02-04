@@ -208,10 +208,30 @@ class CacheFile {
 
         if (this.checkFileExist(pdfPath)) {
             // 已经存在，则不进行重新存放
-            return pdfPath;
+            return { pdfPath, hash: this.hash };
         }
 
-        fs.writeFileSync(pdfPath, fs.readFileSync(fromFileUrl));
+        // 使用流式复制，避免同步阻塞
+        await new Promise((resolve, reject) => {
+            const reader = fs.createReadStream(fromFileUrl);
+            const writer = fs.createWriteStream(pdfPath);
+
+            reader.on('error', (err) => {
+                log('CacheFile.js', 'savePdf', '读取源文件失败:', err.message);
+                reject(err);
+            });
+
+            writer.on('error', (err) => {
+                log('CacheFile.js', 'savePdf', '写入目标文件失败:', err.message);
+                reject(err);
+            });
+
+            writer.on('finish', () => {
+                resolve();
+            });
+
+            reader.pipe(writer);
+        });
 
         return {
             pdfPath,
@@ -292,7 +312,22 @@ class CacheFile {
             return targetPath;
         }
 
-        fs.writeFileSync(targetPath, JSON.stringify(json, null, 4));
+        // 使用异步写入，避免阻塞
+        await new Promise((resolve, reject) => {
+            const writer = fs.createWriteStream(targetPath);
+
+            writer.on('error', (err) => {
+                log('CacheFile.js', 'saveParseInfo', '写入解析结果失败:', err.message);
+                reject(err);
+            });
+
+            writer.on('finish', () => {
+                resolve();
+            });
+
+            writer.write(JSON.stringify(json, null, 4));
+            writer.end();
+        });
 
         return targetPath;
     }

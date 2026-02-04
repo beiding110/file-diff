@@ -130,7 +130,7 @@ class BidComparator {
                 this.imageComparator.processHandler = this.imageCompareProgressHandlerFactory(id);
             }
 
-            // 优化：从缓存读取或从文件加载（避免重复读取，支持异步）
+            // 从缓存读取或从文件加载，避免重复读取
             const getFile = async (fileHash) => {
                 if (!loadedFilesCache.has(fileHash)) {
                     const data = CacheFile.readCacheByHash(fileHash);
