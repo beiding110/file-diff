@@ -1,9 +1,18 @@
 {
+    "scripts": {
+        "build": "webpack --mode production",
+        "test:bundle": "node test/test_bundle_verify.js"
+    },
     "dependencies": {
         "diff": "^7.0.0",
         "nodejieba": "^2.6.0",
         "pdfjs-dist": "^5.1.91",
         "sharp": "^0.33.5",
         "uuid": "^11.1.0"
+    },
+    "devDependencies": {
+        "terser-webpack-plugin": "^5.3.14",
+        "webpack-cli": "^6.0.1",
+        "webpack-node-externals": "^3.0.0"
     }
 }
