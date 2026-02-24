@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BidComparator Web Client</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 30px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        input,
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .progress-container {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+
+        .status-message {
+            margin-top: 15px;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            color: #666;
+        }
+
+        .result-container {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .result-box {
+            background: #f0f9ff;
+            border: 2px solid #0284c7;
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .result-box h3 {
+            color: #0284c7;
+            margin-bottom: 10px;
+        }
+
+        .log-container {
+            margin-top: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 3px 0;
+        }
+
+        .log-info {
+            color: #4ec9b0;
+        }
+
+        .log-success {
+            color: #4ade80;
+        }
+
+        .log-error {
+            color: #f87171;
+        }
+
+        .log-warning {
+            color: #fbbf24;
+        }
+
+        .connected-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            background: #dcfce7;
+            color: #166534;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+
+        .disconnected-badge {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>BidComparator 对比工具</h1>
+        <p class="subtitle">
+            WebSocket 连接状态:
+            <span id="connectionStatus" class="connected-badge">已连接</span>
+        </p>
+
+        <form id="compareForm" autocomplete="off">
+            <div class="form-group">
+                <label for="bidFiles">投标文件（至少选择2个）</label>
+                <input type="file" id="bidFiles" multiple accept=".pdf,application/pdf">
+                <small style="color: #666; margin-top: 5px; display: block;">支持多选，按住 Ctrl 或 Cmd 可选择多个文件</small>
+            </div>
+
+            <div class="form-group">
+                <label for="biddingFile">招标文件（可选）</label>
+                <input type="file" id="biddingFile" accept=".pdf,application/pdf">
+            </div>
+
+            <div class="form-group">
+                <label for="threshold">文字相似度阈值 (0-1)</label>
+                <input type="number" id="threshold" value="0.8" step="0.1" min="0" max="1" autocomplete="off">
+            </div>
+
+            <div class="form-group">
+                <label for="minLength">最小文字长度</label>
+                <input type="number" id="minLength" value="15" step="1" autocomplete="off">
+            </div>
+
+            <button type="submit" id="submitBtn">开始对比</button>
+        </form>
+
+        <div class="progress-container" id="progressContainer">
+            <h3>任务进度</h3>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width: 0%">0%</div>
+            </div>
+            <div class="status-message" id="statusMessage">准备中...</div>
+        </div>
+
+        <div class="result-container" id="resultContainer">
+            <div class="result-box">
+                <h3 id="resultTitle">对比完成！</h3>
+                <p>任务 ID: <span id="resultJobId"></span></p>
+                <p>结果 GroupID: <span id="resultGroupId"></span></p>
+            </div>
+        </div>
+
+        <div class="log-container" id="logContainer"></div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:3000/api';
+        const WS_URL = 'ws://localhost:3000/ws';
+
+        let ws = null;
+        let currentJobId = null;
+
+        // ============ WebSocket 连接 ============
+        function connectWebSocket() {
+            // 防止重复连接
+            if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+                console.log('WebSocket 已在连接中或已连接，跳过重复连接');
+                return;
+            }
+
+            console.log('正在连接 WebSocket:', WS_URL);
+            addLog('正在连接 WebSocket...', 'info');
+
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                console.log('WebSocket onopen 触发, readyState:', ws.readyState);
+                updateConnectionStatus(true);
+                addLog('WebSocket 已连接', 'success');
+            };
+
+            ws.onmessage = (event) => {
+                console.log('WebSocket onmessage 触发, data:', event.data);
+                try {
+                    const data = JSON.parse(event.data);
+                    handleWebSocketMessage(data);
+                } catch (error) {
+                    addLog('解析消息失败: ' + error.message, 'error');
+                    console.error('解析消息失败:', error, '原始数据:', event.data);
+                }
+            };
+
+            ws.onclose = (event) => {
+                console.log('WebSocket onclose 触发, code:', event.code, 'reason:', event.reason, 'wasClean:', event.wasClean);
+                updateConnectionStatus(false);
+                addLog(`WebSocket 连接已断开 (code: ${event.code})`, 'warning');
+                // 尝试重连
+                setTimeout(() => {
+                    console.log('准备重新连接 WebSocket...');
+                    connectWebSocket();
+                }, 5000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket onerror 触发:', error);
+                addLog('WebSocket 连接错误，请查看控制台', 'error');
+            };
+        }
+
+        function handleWebSocketMessage(data) {
+            console.log('收到 WebSocket 消息:', data); // 添加调试日志
+            console.log('当前 currentJobId:', currentJobId);
+            console.log('消息中的 jobId:', data.jobId);
+            console.log('是否匹配:', data.jobId === currentJobId);
+
+            switch (data.type) {
+                case 'connected':
+                    addLog('服务端确认连接: ' + data.message, 'success');
+                    break;
+                case 'jobCompleted':
+                    console.log('收到任务完成消息, jobId:', data.jobId, 'currentJobId:', currentJobId);
+
+                    // 临时：移除 jobId 检查，处理所有完成事件
+                    console.log('⚠️ 临时模式：处理所有任务完成事件（忽略 jobId 检查）');
+                    addLog('任务已完成！', 'success');
+                    fetchJobResult(data.jobId);
+
+                    break;
+                case 'jobFailed':
+                    console.log('收到任务失败消息, jobId:', data.jobId, 'currentJobId:', currentJobId);
+                    console.log('错误信息:', data.error);
+
+                    // 临时：移除 jobId 检查，处理所有失败事件
+                    console.log('⚠️ 临时模式：处理所有任务失败事件（忽略 jobId 检查）');
+                    addLog('任务失败: ' + data.error, 'error');
+                    document.getElementById('submitBtn').disabled = false;
+                    
+                    break;
+                case 'jobProgress':
+                    console.log('收到任务进度消息, jobId:', data.jobId, 'currentJobId:', currentJobId);
+                    console.log('进度数据:', data.progress);
+
+                    // 临时：移除 jobId 检查，显示所有进度更新
+                    console.log('⚠️ 临时模式：显示所有任务的进度（忽略 jobId 检查）');
+                    updateProgress(data.progress);
+                    
+                    break;
+                default:
+                    addLog('收到未知消息类型: ' + data.type, 'warning');
+            }
+        }
+
+        function updateConnectionStatus(connected) {
+            const badge = document.getElementById('connectionStatus');
+            if (connected) {
+                badge.textContent = '已连接';
+                badge.classList.remove('disconnected-badge');
+                badge.classList.add('connected-badge');
+            } else {
+                badge.textContent = '未连接';
+                badge.classList.remove('connected-badge');
+                badge.classList.add('disconnected-badge');
+            }
+        }
+
+        // ============ API 调用 ============
+        async function createCompareTask(formData) {
+            try {
+                console.log('正在上传文件并创建任务...');
+                addLog('正在上传文件...', 'info');
+
+                const response = await fetch(`${API_BASE_URL}/compare`, {
+                    method: 'POST',
+                    body: formData,  // 直接发送 FormData，不要设置 Content-Type
+                });
+
+                const result = await response.json();
+                console.log('任务创建响应:', result);
+
+                if (result.success) {
+                    currentJobId = result.jobId;
+                    console.log('✅ 已设置 currentJobId =', currentJobId);
+                    addLog('任务已创建: ' + result.jobId, 'info');
+                    return result.jobId;
+                } else {
+                    throw new Error(result.error);
+                }
+            } catch (error) {
+                console.error('创建任务失败:', error);
+                addLog('创建任务失败: ' + error.message, 'error');
+                throw error;
+            }
+        }
+
+        async function fetchJobResult(jobId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/result`);
+                const result = await response.json();
+
+                if (result.success && result.status === 'completed') {
+                    document.getElementById('resultJobId').textContent = jobId;
+                    document.getElementById('resultGroupId').textContent = result.result.groupId;
+                    document.getElementById('resultContainer').style.display = 'block';
+                    addLog('结果 GroupID: ' + result.result.groupId, 'success');
+                    document.getElementById('submitBtn').disabled = false;
+                }
+            } catch (error) {
+                addLog('获取结果失败: ' + error.message, 'error');
+            }
+        }
+
+        // ============ UI 更新 ============
+        function updateProgress(progress) {
+            // Bull 4.x: progress 是一个数字（0-100）
+            let percentage = 0;
+            let statusText = '处理中...';
+
+            if (typeof progress === 'number') {
+                // 标准格式：数字（0-100）
+                percentage = Math.floor(progress);
+
+                // 根据进度显示状态
+                if (percentage === 0) {
+                    statusText = '初始化中...';
+                } else if (percentage < 100) {
+                    statusText = '处理中...';
+                } else {
+                    statusText = '已完成';
+                }
+            } else if (progress && typeof progress === 'object') {
+                // 兼容旧格式（对象）
+                if (progress.value !== undefined) {
+                    percentage = Math.floor(progress.value);
+                }
+                if (progress.data) {
+                    if (progress.data.status) {
+                        const statusMap = {
+                            'initializing': '初始化中...',
+                            'processing': '处理中...',
+                            'completed': '已完成',
+                        };
+                        statusText = statusMap[progress.data.status] || progress.data.status;
+                    }
+                    if (progress.data.stage) {
+                        const stageMap = {
+                            'text': '文字对比',
+                            'image': '图片对比',
+                            'comparing': '对比中',
+                        };
+                        statusText += ` (${stageMap[progress.data.stage]})`;
+                    }
+                    if (progress.data.message) {
+                        statusText += ` - ${progress.data.message}`;
+                    }
+                }
+            }
+
+            document.getElementById('progressFill').style.width = percentage + '%';
+            document.getElementById('progressFill').textContent = percentage + '%';
+            document.getElementById('statusMessage').textContent = statusText;
+        }
+
+        function addLog(message, type = 'info') {
+            const logContainer = document.getElementById('logContainer');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // ============ 表单提交 ============
+        document.getElementById('compareForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            console.log('表单提交事件被触发');
+            addLog('准备上传文件...', 'info');
+
+            // 获取文件
+            const bidFilesInput = document.getElementById('bidFiles');
+            const biddingFileInput = document.getElementById('biddingFile');
+
+            const bidFiles = bidFilesInput.files;
+            const biddingFile = biddingFileInput.files[0] || null;
+
+            // 验证文件
+            if (!bidFiles || bidFiles.length < 2) {
+                addLog('请至少选择2个投标文件', 'error');
+                return;
+            }
+
+            console.log('选择的投标文件:', Array.from(bidFiles).map(f => f.name));
+            if (biddingFile) {
+                console.log('选择的招标文件:', biddingFile.name);
+            }
+
+            // 创建 FormData
+            const formData = new FormData();
+
+            // 添加投标文件
+            for (let i = 0; i < bidFiles.length; i++) {
+                formData.append('bidFiles', bidFiles[i]);
+            }
+
+            // 添加招标文件（如果有）
+            if (biddingFile) {
+                formData.append('biddingFile', biddingFile);
+            }
+
+            // 添加其他参数
+            const threshold = parseFloat(document.getElementById('threshold').value);
+            const minLength = parseInt(document.getElementById('minLength').value);
+            formData.append('threshold', threshold);
+            formData.append('minLength', minLength);
+
+            console.log('准备上传, 参数:', { threshold, minLength });
+
+            // 显示进度条
+            document.getElementById('progressContainer').style.display = 'block';
+            document.getElementById('resultContainer').style.display = 'none';
+            document.getElementById('submitBtn').disabled = true;
+
+            try {
+                const jobId = await createCompareTask(formData);
+
+                console.log('任务已创建, jobId:', jobId);
+
+                // 启动定时检查任务状态（备用方案，如果 WebSocket 事件丢失）
+                startStatusPolling(jobId);
+
+                // WebSocket 会自动接收进度更新
+            } catch (error) {
+                console.error('创建任务失败:', error);
+                document.getElementById('submitBtn').disabled = false;
+            }
+        });
+
+        // ============ 任务状态轮询（备用方案）============
+        let pollingInterval = null;
+
+        function startStatusPolling(jobId) {
+            // 清除之前的轮询
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+
+            console.log('🔄 启动任务状态轮询, jobId:', jobId);
+
+            // 每2秒检查一次任务状态
+            pollingInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/status`);
+                    const result = await response.json();
+
+                    console.log('📋 任务状态查询结果:', result);
+                    console.log('  - 状态:', result.status);
+                    console.log('  - 进度:', result.progress);
+                    console.log('  - 创建时间:', new Date(result.created).toLocaleString());
+                    console.log('  - 处理时间:', result.processed ? new Date(result.processed).toLocaleString() : 'N/A');
+                    console.log('  - 完成时间:', result.finished ? new Date(result.finished).toLocaleString() : 'N/A');
+
+                    if (result.success && result.status === 'completed') {
+                        console.log('✅ 轮询检测到任务已完成');
+                        addLog('任务已完成（通过轮询检测）', 'success');
+                        clearInterval(pollingInterval);
+                        fetchJobResult(jobId);
+                    } else if (result.success && result.status === 'failed') {
+                        console.log('❌ 轮询检测到任务失败');
+                        addLog('任务失败（通过轮询检测）: ' + (result.error || '未知错误'), 'error');
+                        clearInterval(pollingInterval);
+                        document.getElementById('submitBtn').disabled = false;
+                    } else if (result.success && (result.status === 'active' || result.status === 'waiting')) {
+                        // 任务还在运行中，继续轮询
+                        console.log(`⏳ 任务还在运行中 (${result.status})，继续等待...`);
+                    }
+                } catch (error) {
+                    console.error('❌ 查询任务状态失败:', error);
+                }
+            }, 2000);
+        }
+
+        // ============ 初始化 ============
+        connectWebSocket();
+
+        // 页面卸载时关闭 WebSocket 连接
+        window.addEventListener('beforeunload', () => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                console.log('页面卸载，关闭 WebSocket 连接');
+                ws.close(1000, '页面关闭');
+            }
+        });
+
+        // 监听页面可见性变化
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                console.log('页面进入后台');
+            } else {
+                console.log('页面进入前台, WebSocket 状态:', ws?.readyState);
+                if (!ws || ws.readyState === WebSocket.CLOSED) {
+                    console.log('WebSocket 已关闭，尝试重新连接');
+                    connectWebSocket();
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>
