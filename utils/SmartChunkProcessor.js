@@ -59,10 +59,17 @@ class SmartChunkProcessor {
      * @param {Function} options.onProgress - 进度回调函数（无参数，每次任务完成后调用）
      * @param {Function} options.onResult - 结果回调函数 (result) => Promise|void，每个结果产生时立即调用
      * @param {number} options.estimatedTotal - 预估任务总数（用于 factoryProgress），不传则使用 arrayA.length * arrayB.length
+     * @param {boolean} options.autoAdjustTotal - 是否自动修正预估总数（默认 true）
      * @returns {Promise<Array>} 当 onResult 为空时返回所有结果，否则返回空数组
      */
     async processDoubleLoop(arrayA, arrayB, taskCreator, filterFn = null, options = {}) {
-        const { chunkSize = 1000, onProgress = null, onResult = null, estimatedTotal = null } = options;
+        const {
+            chunkSize = 1000,
+            onProgress = null,
+            onResult = null,
+            estimatedTotal = null,
+            autoAdjustTotal = true
+        } = options;
 
         // 使用预估总数或粗略估计，避免预先统计的双重循环
         const totalTasks = estimatedTotal !== null ? estimatedTotal : arrayA.length * arrayB.length;
@@ -72,14 +79,24 @@ class SmartChunkProcessor {
         const results = streamingMode ? null : [];
         const chunkPromises = [];
 
+        // 用于统计实际执行的任务数，以便动态调整进度
+        let actualTasksProcessed = 0;
+        let lastAdjustmentPoint = 0;
+        const adjustmentThreshold = Math.max(totalTasks * 0.1, 100); // 每处理 10% 或至少 100 个任务后检查是否需要调整
+
         // 外层循环：遍历数组 A
+        let arrayAIndex = 0;
         for (const itemA of arrayA) {
+            arrayAIndex++;
             // 内层循环：遍历数组 B
             for (const itemB of arrayB) {
                 // 如果有过滤函数且不满足条件，跳过
                 if (filterFn && !filterFn(itemA, itemB)) {
                     continue;
                 }
+
+                // 统计实际任务数
+                actualTasksProcessed++;
 
                 // 创建任务并添加到批次中
                 const task = taskCreator(itemA, itemB);
@@ -88,6 +105,23 @@ class SmartChunkProcessor {
                 // 当积累到 chunkSize 个任务时，处理这批任务
                 if (chunkPromises.length >= chunkSize) {
                     await this._processChunk(chunkPromises, streamingMode, results, onResult, onProgress);
+
+                    // 检查是否需要动态调整总数
+                    if (autoAdjustTotal && onProgress && onProgress.setTotal) {
+                        const tasksSinceLastCheck = actualTasksProcessed - lastAdjustmentPoint;
+                        if (tasksSinceLastCheck >= adjustmentThreshold) {
+                            // 基于已处理的 arrayA 元素推算实际总数
+                            const avgTasksPerA = actualTasksProcessed / arrayAIndex;
+                            const projectedTotal = Math.round(avgTasksPerA * arrayA.length);
+
+                            // 如果推算值与预估值偏差超过 20%，则调整
+                            if (Math.abs(projectedTotal - totalTasks) / totalTasks > 0.2) {
+                                onProgress.setTotal(projectedTotal);
+                            }
+
+                            lastAdjustmentPoint = actualTasksProcessed;
+                        }
+                    }
                 }
             }
         }
@@ -95,6 +129,11 @@ class SmartChunkProcessor {
         // 处理剩余的任务
         if (chunkPromises.length > 0) {
             await this._processChunk(chunkPromises, streamingMode, results, onResult, onProgress);
+        }
+
+        // 最终修正：用实际执行的总数更新进度
+        if (autoAdjustTotal && onProgress && onProgress.setTotal && actualTasksProcessed !== totalTasks) {
+            onProgress.setTotal(actualTasksProcessed);
         }
 
         return results || [];
