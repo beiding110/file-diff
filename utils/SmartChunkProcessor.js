@@ -57,28 +57,19 @@ class SmartChunkProcessor {
      * @param {Object} options - 配置选项
      * @param {number} options.chunkSize - 每批处理的任务数
      * @param {Function} options.onProgress - 进度回调函数（无参数，每次任务完成后调用）
-     * @param {number} options.estimatedTotal - 预估任务总数（用于 factoryProgress）
-     * @returns {Promise<Array>}
+     * @param {Function} options.onResult - 结果回调函数 (result) => Promise|void，每个结果产生时立即调用
+     * @param {number} options.estimatedTotal - 预估任务总数（用于 factoryProgress），不传则使用 arrayA.length * arrayB.length
+     * @returns {Promise<Array>} 当 onResult 为空时返回所有结果，否则返回空数组
      */
     async processDoubleLoop(arrayA, arrayB, taskCreator, filterFn = null, options = {}) {
-        const { chunkSize = 1000, onProgress = null, estimatedTotal = null } = options;
+        const { chunkSize = 1000, onProgress = null, onResult = null, estimatedTotal = null } = options;
 
-        // 如果没有提供预估总数，需要先遍历统计
-        let totalTasks = estimatedTotal;
-        if (totalTasks === null && filterFn) {
-            totalTasks = 0;
-            for (const itemA of arrayA) {
-                for (const itemB of arrayB) {
-                    if (filterFn(itemA, itemB)) {
-                        totalTasks++;
-                    }
-                }
-            }
-        } else if (totalTasks === null) {
-            totalTasks = arrayA.length * arrayB.length;
-        }
+        // 使用预估总数或粗略估计，避免预先统计的双重循环
+        const totalTasks = estimatedTotal !== null ? estimatedTotal : arrayA.length * arrayB.length;
 
-        const results = [];
+        // 流式模式：使用 onResult 回调，不累积结果
+        const streamingMode = onResult !== null;
+        const results = streamingMode ? null : [];
         const chunkPromises = [];
 
         // 外层循环：遍历数组 A
@@ -96,50 +87,56 @@ class SmartChunkProcessor {
 
                 // 当积累到 chunkSize 个任务时，处理这批任务
                 if (chunkPromises.length >= chunkSize) {
-                    const currentChunkSize = chunkPromises.length;
-                    const chunkResults = await Promise.all(chunkPromises);
-
-                    for (const result of chunkResults) {
-                        if (result != null) {
-                            results.push(result);
-                        }
-                    }
-
-                    // 更新进度（每个任务完成后调用一次）
-                    if (onProgress) {
-                        for (let i = 0; i < currentChunkSize; i++) {
-                            onProgress();
-                        }
-                    }
-
-                    // 清空数组，释放内存
-                    chunkPromises.length = 0;
+                    await this._processChunk(chunkPromises, streamingMode, results, onResult, onProgress);
                 }
             }
         }
 
         // 处理剩余的任务
         if (chunkPromises.length > 0) {
-            const currentChunkSize = chunkPromises.length;
-            const chunkResults = await Promise.all(chunkPromises);
+            await this._processChunk(chunkPromises, streamingMode, results, onResult, onProgress);
+        }
 
+        return results || [];
+    }
+
+    /**
+     * 处理一批任务（内部方法）
+     * @param {Array} chunkPromises - 任务 Promise 数组
+     * @param {Boolean} streamingMode - 是否流式模式
+     * @param {Array} results - 结果数组（非流式模式使用）
+     * @param {Function} onResult - 结果回调（流式模式使用）
+     * @param {Function} onProgress - 进度回调
+     */
+    async _processChunk(chunkPromises, streamingMode, results, onResult, onProgress) {
+        const currentChunkSize = chunkPromises.length;
+        const chunkResults = await Promise.all(chunkPromises);
+
+        if (streamingMode) {
+            // 流式模式：立即处理每个结果，不累积
+            for (const result of chunkResults) {
+                if (result != null) {
+                    await onResult(result);
+                }
+            }
+        } else {
+            // 传统模式：累积结果到数组
             for (const result of chunkResults) {
                 if (result != null) {
                     results.push(result);
                 }
             }
-
-            // 更新进度
-            if (onProgress) {
-                for (let i = 0; i < currentChunkSize; i++) {
-                    onProgress();
-                }
-            }
-
-            chunkPromises.length = 0;
         }
 
-        return results;
+        // 更新进度
+        if (onProgress) {
+            for (let i = 0; i < currentChunkSize; i++) {
+                onProgress();
+            }
+        }
+
+        // 清空数组，释放内存
+        chunkPromises.length = 0;
     }
 }
 

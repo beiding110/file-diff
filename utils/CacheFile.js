@@ -51,17 +51,20 @@ class CacheFile {
                     return JSON.parse(context);
                 }
 
-                // 对于大文件，使用异步流式读取
+                // 对于大文件，使用 Buffer.concat 避免字符串拼接的内存问题
                 return new Promise((resolve, reject) => {
-                    const stream = fs.createReadStream(parseFilePath, { encoding: 'utf8' });
-                    let data = '';
+                    const stream = fs.createReadStream(parseFilePath);
+                    const chunks = [];
 
                     stream.on('data', (chunk) => {
-                        data += chunk;
+                        chunks.push(chunk);
                     });
 
                     stream.on('end', () => {
                         try {
+                            // 使用 Buffer.concat 一次性合并，比字符串拼接更高效
+                            const buffer = Buffer.concat(chunks);
+                            const data = buffer.toString('utf8');
                             resolve(JSON.parse(data));
                         } catch (error) {
                             log('CacheFile.js', 'readCacheByHash', '解析缓存文件失败:', hash, error.message);

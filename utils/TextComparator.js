@@ -121,6 +121,9 @@ class TextComparator {
             return true;
         };
 
+        // 流式处理：使用 Map 跟踪每个文本的最大相似度
+        const textSimilarityMap = new Map();
+
         // 定义任务创建函数
         const taskCreator = (pa, pb) => {
             return new Promise((resolve) => {
@@ -147,54 +150,44 @@ class TextComparator {
             });
         };
 
-        // 统计任务总数（用于进度条）
-        let totalTasks = 0;
-        for (const pa of texts) {
-            for (const pb of biddingTexts) {
-                if (filterFn(pa, pb)) {
-                    totalTasks++;
-                }
-            }
-        }
+        // 使用 texts.length * biddingTexts.length 作为粗略估计用于进度显示
+        const estimatedTotal = texts.length * biddingTexts.length;
 
-        // 构建进度回调
-        const progressCallback = factoryProgress(totalTasks, progress);
+        // 构建进度回调（使用估计值）
+        const progressCallback = factoryProgress(estimatedTotal, progress);
 
-        // 使用流式处理获取所有比对结果
-        const allComparisons = await smartChunkProcessor.processDoubleLoop(texts, biddingTexts, taskCreator, filterFn, {
+        // 使用流式处理：onResult 回调直接更新 Map，不累积结果数组
+        await smartChunkProcessor.processDoubleLoop(texts, biddingTexts, taskCreator, filterFn, {
             chunkSize: 500,
             onProgress: progressCallback,
-            estimatedTotal: totalTasks,
+            estimatedTotal: estimatedTotal,
+            onResult: (comparison) => {
+                // 流式处理：立即更新 Map，不存储所有比较结果
+                const key = `${comparison.pageA}<_>${comparison.textA}`;
+
+                if (!textSimilarityMap.has(key)) {
+                    textSimilarityMap.set(key, comparison.similarity);
+                } else {
+                    // 保留最大相似度
+                    const currentMax = textSimilarityMap.get(key);
+                    if (comparison.similarity > currentMax) {
+                        textSimilarityMap.set(key, comparison.similarity);
+                    }
+                }
+            },
         });
 
-        // 按投标文本分组，找出没有与任何招标文本相似的文本
-        const textSimilarityMap = new Map();
-
-        for (const comparison of allComparisons) {
-            const key = `${comparison.pageA}_${comparison.textA}`;
-
-            if (!textSimilarityMap.has(key)) {
-                textSimilarityMap.set(key, false);
-            }
-
-            // 如果发现相似度达标，标记为 true
-            if (comparison.similarity >= this.options.threshold) {
-                textSimilarityMap.set(key, true);
-            }
-        }
-
-        // 过滤出没有相似度的文本
+        // 根据 Map 构建结果：只保留没有相似度的文本
         const result = [];
         const seenKeys = new Set();
 
-        for (const comparison of allComparisons) {
-            const key = `${comparison.pageA}_${comparison.textA}`;
-
+        for (const [key, maxSimilarity] of textSimilarityMap) {
             // 只保留没有相似度的文本，且每个文本只保留一次
-            if (!textSimilarityMap.get(key) && !seenKeys.has(key)) {
+            if (maxSimilarity < this.options.threshold && !seenKeys.has(key)) {
+                const [page, text] = key.split('<_>');
                 result.push({
-                    text: comparison.textA,
-                    pageNumber: comparison.pageA,
+                    text: text,
+                    pageNumber: parseInt(page, 10),
                 });
                 seenKeys.add(key);
             }
@@ -257,24 +250,17 @@ class TextComparator {
             });
         };
 
-        // 统计任务总数（用于进度条）
-        let totalTasks = 0;
-        for (const pa of sentencesA) {
-            for (const pb of sentencesB) {
-                if (filterFn(pa, pb)) {
-                    totalTasks++;
-                }
-            }
-        }
+        // 移除预先统计：使用粗略估计
+        const estimatedTotal = sentencesA.length * sentencesB.length;
 
         // 构建进度回调
-        const progressCallback = factoryProgress(totalTasks, this.progressHandler);
+        const progressCallback = factoryProgress(estimatedTotal, this.progressHandler);
 
-        // 使用流式处理
+        // 使用较小的 chunkSize 降低内存峰值
         const result = await smartChunkProcessor.processDoubleLoop(sentencesA, sentencesB, taskCreator, filterFn, {
-            chunkSize: 1000,
+            chunkSize: 200,
             onProgress: progressCallback,
-            estimatedTotal: totalTasks,
+            estimatedTotal: estimatedTotal,
         });
 
         log('TextComparator.js', 'compareTexts', '对比文字完毕：', result.length);

@@ -112,52 +112,67 @@ class BidComparator {
         // 使用 Map 缓存已加载的文件，避免重复读取
         const loadedFilesCache = new Map();
 
-        for (let i = 0; i < this.bidDocsMatrix.length; i++) {
-            let { id, files } = this.bidDocsMatrix[i];
+        // 分批处理：每批处理的对比对数量
+        // 这有助于在大量文件时控制内存使用
+        const BATCH_SIZE = 10;
 
-            // 排除招标文件内容进度回调
-            if (this.textCompareRemoveProgressHandlerFactory) {
-                this.textComparator.removeProgressHandler = this.textCompareRemoveProgressHandlerFactory(id);
-            }
+        for (let batchStart = 0; batchStart < this.bidDocsMatrix.length; batchStart += BATCH_SIZE) {
+            const batchEnd = Math.min(batchStart + BATCH_SIZE, this.bidDocsMatrix.length);
+            const batch = this.bidDocsMatrix.slice(batchStart, batchEnd);
 
-            // 文字对比进度回调
-            if (this.textCompareProgressHandlerFactory) {
-                this.textComparator.progressHandler = this.textCompareProgressHandlerFactory(id);
-            }
+            log('index.js', 'processFiles', `处理批次 ${batchStart + 1}-${batchEnd} / ${this.bidDocsMatrix.length}`);
 
-            // 图片对比进度回调
-            if (this.imageCompareProgressHandlerFactory) {
-                this.imageComparator.processHandler = this.imageCompareProgressHandlerFactory(id);
-            }
+            // 处理当前批次
+            for (let i = 0; i < batch.length; i++) {
+                let { id, files } = batch[i];
 
-            // 从缓存读取或从文件加载，避免重复读取
-            const getFile = async (fileHash) => {
-                if (!loadedFilesCache.has(fileHash)) {
-                    const data = CacheFile.readCacheByHash(fileHash);
-                    // readCacheByHash 可能返回 Promise（大文件）或直接返回结果（小文件）
-                    loadedFilesCache.set(fileHash, data instanceof Promise ? await data : data);
+                // 排除招标文件内容进度回调
+                if (this.textCompareRemoveProgressHandlerFactory) {
+                    this.textComparator.removeProgressHandler = this.textCompareRemoveProgressHandlerFactory(id);
                 }
-                return loadedFilesCache.get(fileHash);
-            };
 
-            const fileL = await getFile(files[0].fileHash);
-            const fileR = await getFile(files[1].fileHash);
+                // 文字对比进度回调
+                if (this.textCompareProgressHandlerFactory) {
+                    this.textComparator.progressHandler = this.textCompareProgressHandlerFactory(id);
+                }
 
-            // 进行比对
-            const result = await this.compareBids(fileL, fileR, id);
+                // 图片对比进度回调
+                if (this.imageCompareProgressHandlerFactory) {
+                    this.imageComparator.processHandler = this.imageCompareProgressHandlerFactory(id);
+                }
 
-            log('index.js', 'processFiles', '对比完毕');
+                // 从缓存读取或从文件加载
+                const getFile = async (fileHash) => {
+                    if (!loadedFilesCache.has(fileHash)) {
+                        const data = CacheFile.readCacheByHash(fileHash);
+                        loadedFilesCache.set(fileHash, data instanceof Promise ? await data : data);
+                    }
+                    return loadedFilesCache.get(fileHash);
+                };
 
-            result.groupid = GROUPID;
+                const fileL = await getFile(files[0].fileHash);
+                const fileR = await getFile(files[1].fileHash);
 
-            // 增量保存单个结果，避免内存累积
-            await CacheFile.appendResult(result, GROUPID, result.uuid);
+                // 进行比对
+                const result = await this.compareBids(fileL, fileR, id);
 
-            // 保留当前使用的两个文件，清除其他文件的引用
-            const neededHashes = new Set([files[0].fileHash, files[1].fileHash]);
-            for (const [hash] of loadedFilesCache) {
-                if (!neededHashes.has(hash)) {
-                    loadedFilesCache.delete(hash);
+                log('index.js', 'processFiles', '对比完毕');
+
+                result.groupid = GROUPID;
+
+                // 增量保存单个结果，避免内存累积
+                await CacheFile.appendResult(result, GROUPID, result.uuid);
+
+                // 立即清空缓存，释放内存
+                // 下一对文件需要时会重新加载
+                loadedFilesCache.clear();
+            }
+
+            // 批次之间稍作等待，让 GC 有机会回收内存
+            if (batchEnd < this.bidDocsMatrix.length) {
+                await new Promise(resolve => setImmediate(resolve));
+                if (global.gc) {
+                    global.gc();
                 }
             }
         }

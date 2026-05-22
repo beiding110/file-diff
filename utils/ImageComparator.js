@@ -130,24 +130,17 @@ class ImageComparator {
             });
         };
 
-        // 统计任务总数（用于进度条）
-        let totalTasks = 0;
-        for (const imgA of bidA) {
-            for (const imgB of bidB) {
-                if (filterFn(imgA, imgB)) {
-                    totalTasks++;
-                }
-            }
-        }
+        // 移除预先统计：使用粗略估计
+        const estimatedTotal = bidA.length * bidB.length;
 
         // 构建进度回调
-        const progressCallback = factoryProgress(totalTasks, this.processHandler);
+        const progressCallback = factoryProgress(estimatedTotal, this.processHandler);
 
-        // 使用流式处理
+        // 使用较小的 chunkSize 降低内存峰值
         const result = await smartChunkProcessor.processDoubleLoop(bidA, bidB, taskCreator, filterFn, {
-            chunkSize: 500,
+            chunkSize: 100,
             onProgress: progressCallback,
-            estimatedTotal: totalTasks,
+            estimatedTotal: estimatedTotal,
         });
 
         log('ImageComparator.js', 'compareImages', '对比图片结束：', result.length);
