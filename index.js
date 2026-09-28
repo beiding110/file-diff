@@ -42,6 +42,9 @@ class BidComparator {
     constructor() {
         this.bidDocsMatrix = [];
 
+        // across() 暂存的解析结果，供 processFiles 复用后清空
+        this._parsedDocs = null;
+
         this.textComparator = null;
         this.imageComparator = null;
     }
@@ -61,6 +64,10 @@ class BidComparator {
             })
         );
 
+        // 暂存 worker 返回的完整解析结果，processFiles 直接复用，
+        // 避免再从磁盘重复读取 parse.json（读取后即清空，不长期占用内存）
+        this._parsedDocs = new Map();
+
         const matrix = [];
 
         // 两两对比投标文件
@@ -68,6 +75,9 @@ class BidComparator {
             for (let j = i + 1; j < bidDocs.length; j++) {
                 const fileL = bidDocs[i],
                     fileR = bidDocs[j];
+
+                this._parsedDocs.set(fileL.fileHash, fileL);
+                this._parsedDocs.set(fileR.fileHash, fileR);
 
                 matrix.push({
                     id: uuidv4(),
@@ -109,8 +119,31 @@ class BidComparator {
 
         const GROUPID = uuidv4();
 
-        // 使用 Map 缓存已加载的文件，避免重复读取
-        const loadedFilesCache = new Map();
+        // 文档缓存：优先复用 across() 已取得的解析结果，磁盘只作为兜底。
+        // 引用计数（每个文件参与的对比对数）归零即释放；同时限制缓存文档
+        // 数量上限——文件很多时内存仍有界，超限按"已无用优先、最久未用次之"
+        // 淘汰，被淘汰的文档下次使用时自动从磁盘重新加载
+        const MAX_CACHED_DOCS = 20;
+
+        const pairCount = new Map();
+
+        for (const { files } of this.bidDocsMatrix) {
+            for (const file of files) {
+                pairCount.set(file.fileHash, (pairCount.get(file.fileHash) || 0) + 1);
+            }
+        }
+
+        const docCache = new Map(); // hash -> { doc, remaining, lastUsed }
+
+        if (this._parsedDocs) {
+            for (const [hash, doc] of this._parsedDocs) {
+                docCache.set(hash, { doc, remaining: pairCount.get(hash) || 0, lastUsed: Date.now() });
+            }
+
+            // 灌入后清空暂存，避免长期双份引用
+            this._parsedDocs.clear();
+            this._parsedDocs = null;
+        }
 
         // 分批处理：每批处理的对比对数量
         // 这有助于在大量文件时控制内存使用
@@ -143,16 +176,44 @@ class BidComparator {
 
                 // 从缓存读取或从文件加载
                 const getFile = async (fileHash) => {
-                    if (!loadedFilesCache.has(fileHash)) {
-                        const data = await CacheFile.readCacheByHash(fileHash);
+                    let entry = docCache.get(fileHash);
 
-                        if (!data) {
-                            throw new Error(`未找到文件 ${fileHash} 的解析缓存，请先 preload 后再对比`);
+                    if (entry) {
+                        entry.lastUsed = Date.now();
+
+                        return entry.doc;
+                    }
+
+                    const data = await CacheFile.readCacheByHash(fileHash);
+
+                    if (!data) {
+                        throw new Error(`未找到文件 ${fileHash} 的解析缓存，请先 preload 后再对比`);
+                    }
+
+                    // 数量超限时淘汰：已无剩余对比对的优先，其次最久未用的
+                    if (docCache.size >= MAX_CACHED_DOCS) {
+                        let victimKey = null;
+                        let victimScore = null;
+
+                        for (const [key, item] of docCache) {
+                            // 分数越小越先淘汰：引用耗尽排最前，同状态下取最久未用
+                            const score = (item.remaining > 0 ? Number.MAX_SAFE_INTEGER : 0) + item.lastUsed;
+
+                            if (victimScore === null || score < victimScore) {
+                                victimScore = score;
+                                victimKey = key;
+                            }
                         }
 
-                        loadedFilesCache.set(fileHash, data);
+                        if (victimKey !== null) {
+                            docCache.delete(victimKey);
+                        }
                     }
-                    return loadedFilesCache.get(fileHash);
+
+                    entry = { doc: data, remaining: pairCount.get(fileHash) || 0, lastUsed: Date.now() };
+                    docCache.set(fileHash, entry);
+
+                    return entry.doc;
                 };
 
                 const fileL = await getFile(files[0].fileHash);
@@ -167,11 +228,20 @@ class BidComparator {
 
                 // 增量保存单个结果，避免内存累积
                 await CacheFile.appendResult(result, GROUPID, result.uuid);
-            }
 
-            // 批次之间清空缓存，让同批次内的对比对共享已加载文件，
-            // 同时避免大量文件时内存持续增长
-            loadedFilesCache.clear();
+                // 引用计数递减，归零即释放该文档占用的内存
+                for (const file of files) {
+                    const entry = docCache.get(file.fileHash);
+
+                    if (entry) {
+                        entry.remaining -= 1;
+
+                        if (entry.remaining <= 0) {
+                            docCache.delete(file.fileHash);
+                        }
+                    }
+                }
+            }
 
             // 批次之间稍作等待，让 GC 有机会回收内存
             if (batchEnd < this.bidDocsMatrix.length) {
@@ -191,13 +261,15 @@ class BidComparator {
 
         log('index.js', 'compareBids', '即将开始对比文字:', bidA.fileName, bidB.fileName);
 
-        const textSimilarities = await this.textComparator.findSimilarities(bidA.texts, bidB.texts);
+        // 文字对比走 diff 线程池、图片对比在主线程纯内存计算，
+        // 两者互不争抢资源，并行执行缩短单对耗时
+        const [textSimilarities, imageMatches] = await Promise.all([
+            this.textComparator.findSimilarities(bidA.texts, bidB.texts),
+            this.imageComparator.compareImages(bidA.images, bidB.images),
+        ]);
 
         log('index.js', 'compareBids', '文字对比结束：', textSimilarities.length);
         log('index.js', 'compareBids', '即将开始对比图片：:', bidA.fileName, bidB.fileName);
-
-        const imageMatches = await this.imageComparator.compareImages(bidA.images, bidB.images);
-
         log('index.js', 'compareBids', '图片对比结束：', imageMatches.length);
         log('index.js', 'compareBids', '即将开始对比属性：:', bidA.fileName, bidB.fileName);
 
@@ -277,6 +349,15 @@ class BidComparator {
         setCachePath1(path);
         setCachePath2(path);
         setCachePath3(path);
+    }
+
+    // 释放全部线程资源（PDF 解析池 + 文字对比池）。
+    // 空闲 worker 已通过 unref 不阻止进程退出，正常场景无需调用；
+    // 长驻进程（如常驻服务）用完对比功能后可调用以回收线程内存。
+    // 注意：关闭后再发起对比会直接报错而非挂起
+    static dispose() {
+        workerMultiThreading.shutdown();
+        TextComparator.shutdown();
     }
 
     static setLogCustomHandler(handler, { path, funName }) {

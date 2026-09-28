@@ -24,37 +24,40 @@ const WorkerMultiThreading = require('./WorkerMultiThreading.js');
 const smartChunkProcessor = require('./SmartChunkProcessor.js');
 const { log } = require('./log.js');
 
+const os = require('os');
+
 const workerMultiThreading = new WorkerMultiThreading();
 
+// 可注册的 diff worker 实例上限
+const WORKER_CLASSES = [
+    diffWords0, diffWords1, diffWords2, diffWords3, diffWords4,
+    diffWords5, diffWords6, diffWords7, diffWords8, diffWords9,
+    diffWords10, diffWords11, diffWords12, diffWords13, diffWords14,
+    diffWords15, diffWords16, diffWords17, diffWords18, diffWords19,
+];
+
 function regWorker(type = 'multi') {
-    if (!workerMultiThreading.worker.length) {
-        workerMultiThreading.register(diffWords0);
+    // 文字对比是纯计算任务，线程数超过 CPU 核数只会带来
+    // 上下文切换和每线程的内存开销，不会增加吞吐。
+    // 默认按逻辑核数注册；也接受数字精确指定
+    let target;
+
+    if (typeof type === 'number') {
+        target = Math.max(1, Math.min(WORKER_CLASSES.length, Math.floor(type)));
+    } else if (type === 'single') {
+        target = 1;
+    } else {
+        target = Math.max(2, Math.min(WORKER_CLASSES.length, os.cpus().length));
     }
 
-    if (type === 'multi' && workerMultiThreading.worker.length === 1) {
-        workerMultiThreading.register(diffWords1);
-        workerMultiThreading.register(diffWords2);
-        workerMultiThreading.register(diffWords3);
-        workerMultiThreading.register(diffWords4);
-        workerMultiThreading.register(diffWords5);
-        workerMultiThreading.register(diffWords6);
-        workerMultiThreading.register(diffWords7);
-        workerMultiThreading.register(diffWords8);
-        workerMultiThreading.register(diffWords9);
-        workerMultiThreading.register(diffWords10);
-        workerMultiThreading.register(diffWords11);
-        workerMultiThreading.register(diffWords12);
-        workerMultiThreading.register(diffWords13);
-        workerMultiThreading.register(diffWords14);
-        workerMultiThreading.register(diffWords15);
-        workerMultiThreading.register(diffWords16);
-        workerMultiThreading.register(diffWords17);
-        workerMultiThreading.register(diffWords18);
-        workerMultiThreading.register(diffWords19);
+    while (workerMultiThreading.worker.length < target) {
+        // 每线程允许多个在途任务，使 worker 侧能把它们合并成一批消息，
+        // 减少主线程与 worker 的往返次数（计算密集型线程的吞吐关键）
+        workerMultiThreading.register(WORKER_CLASSES[workerMultiThreading.worker.length], { maxConcurrent: 70 });
     }
 
-    if (type === 'single' && workerMultiThreading.worker.length > 1) {
-        workerMultiThreading.keep(1);
+    if (workerMultiThreading.worker.length > target) {
+        workerMultiThreading.keep(target);
     }
 }
 
@@ -77,6 +80,11 @@ class TextComparator {
     }
 
     static regWorker = regWorker;
+
+    // 关闭文字对比线程池（进程结束前回收线程资源用）
+    static shutdown() {
+        workerMultiThreading.shutdown();
+    }
 
     async findSimilarities(textsA, textsB) {
         const sentencesA = textsA.filter((textItem) => {
@@ -109,6 +117,12 @@ class TextComparator {
 
         // 定义过滤函数
         const filterFn = (pa, pb) => {
+            // 已命中任一招标文本即被剔除，后续对比不再需要，直接剪枝。
+            // 投标文件大量复制招标文件时，这一步能跳过大部分任务
+            if (similarTexts.has(pa)) {
+                return false;
+            }
+
             const lengthRatio = pa.text.length / pb.text.length;
 
             if (!(lengthRatio >= this.options.threshold && lengthRatio <= 2 - this.options.threshold)) {
@@ -121,7 +135,8 @@ class TextComparator {
 
         // 与招标文件内容相似（达到阈值）的文本集合，最后统一剔除。
         // 以输入 texts 为基准构建结果，保证从未参与对比的文本
-        // （与所有招标文本长度比都不符、被 filterFn 跳过的）不会被误删
+        // （与所有招标文本长度比都不符、被 filterFn 跳过的）不会被误删。
+        // 存对象引用而非文本字符串：省内存，且 O(1) 引用比较快于字符串比较
         const similarTexts = new Set();
 
         // 定义任务创建函数
@@ -134,7 +149,7 @@ class TextComparator {
                     threshold: this.options.threshold,
                 })
                 .then(({ similarity }) => ({
-                    textA: pa.text,
+                    itemA: pa,
                     similarity,
                 }));
         };
@@ -150,16 +165,16 @@ class TextComparator {
             chunkSize: 500,
             onProgress: progressCallback,
             estimatedTotal: estimatedTotal,
-            onResult: ({ textA, similarity }) => {
+            onResult: ({ itemA, similarity }) => {
                 // 与任一招标文本相似度达到阈值，即认为属于招标文件内容
                 if (similarity >= this.options.threshold) {
-                    similarTexts.add(textA);
+                    similarTexts.add(itemA);
                 }
             },
         });
 
         // 只保留与招标文件内容不相似的文本
-        const result = texts.filter((textItem) => !similarTexts.has(textItem.text));
+        const result = texts.filter((textItem) => !similarTexts.has(textItem));
 
         log('TextComparator.js', 'removeBiddingContent', '排除文字完毕：', result.length);
 
@@ -186,10 +201,7 @@ class TextComparator {
             return workerMultiThreading
                 .handle({
                     a: pa.text,
-                    pageA: pa.pageNumber,
-
                     b: pb.text,
-                    pageB: pb.pageNumber,
 
                     threshold: this.options.threshold,
                 })

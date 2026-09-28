@@ -143,10 +143,17 @@ async function copyFile(sourcePath, targetPath) {
 
 /**
  * 确保目录存在（如果不存在则创建）
+ * 已确认过的目录记入缓存，避免高频写盘场景下重复 stat
  * @param {String} dirPath - 目录路径
  * @returns {Promise<void>}
  */
+const _ensuredDirs = new Set();
+
 async function ensureDir(dirPath) {
+    if (_ensuredDirs.has(dirPath)) {
+        return;
+    }
+
     try {
         await statAsync(dirPath);
         // 目录已存在
@@ -154,6 +161,38 @@ async function ensureDir(dirPath) {
         // 目录不存在，创建（包括父目录）
         await mkdirAsync(dirPath, { recursive: true });
     }
+
+    _ensuredDirs.add(dirPath);
+}
+
+/**
+ * 带并发上限的批量异步执行（保持结果与输入的顺序对应）
+ * @param {Array} items - 输入数组
+ * @param {Function} mapper - (item, index) => Promise，失败的项返回 undefined
+ * @param {Number} concurrency - 并发上限
+ * @returns {Promise<Array>}
+ */
+async function pMap(items, mapper, concurrency = 16) {
+    const results = new Array(items.length);
+    let cursor = 0;
+
+    const run = async () => {
+        while (cursor < items.length) {
+            const index = cursor++;
+
+            try {
+                results[index] = await mapper(items[index], index);
+            } catch (error) {
+                console.error(`并发任务失败: #${index}`, error.message);
+                results[index] = undefined;
+            }
+        }
+    };
+
+    const workersCount = Math.max(1, Math.min(concurrency, items.length));
+    await Promise.all(Array.from({ length: workersCount }, run));
+
+    return results;
 }
 
 /**
@@ -180,7 +219,7 @@ function existsSync(filePath) {
 }
 
 /**
- * 批量读取目录下的所有 JSON 文件
+ * 批量读取目录下的所有 JSON 文件（并发读取，失败项跳过）
  * @param {String} dirPath - 目录路径
  * @returns {Promise<Array>} JSON 对象数组
  */
@@ -188,19 +227,13 @@ async function readJsonFiles(dirPath) {
     const files = await readdirAsync(dirPath);
     const jsonFiles = files.filter((file) => file.endsWith('.json'));
 
-    const results = [];
-    for (const jsonFile of jsonFiles) {
-        try {
-            const itemPath = path.join(dirPath, jsonFile);
-            const content = await readJsonFile(itemPath);
-            results.push(content);
-        } catch (error) {
-            // 跳过读取失败的文件
-            console.error(`读取文件失败: ${jsonFile}`, error.message);
-        }
-    }
+    // 串行逐个 await 时每个文件都要等上一个的 IO 完成，
+    // 并发读取可将百级文件的耗时压缩一个数量级
+    const results = await pMap(jsonFiles, async (jsonFile) => {
+        return await readJsonFile(path.join(dirPath, jsonFile));
+    });
 
-    return results;
+    return results.filter((item) => item !== undefined);
 }
 
 /**
@@ -233,4 +266,5 @@ module.exports = {
     existsSync,
     readJsonFiles,
     remove,
+    pMap,
 };

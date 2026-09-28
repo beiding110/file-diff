@@ -1,13 +1,20 @@
 module.exports = function (thisFileName) {
-    const { Worker, parentPort, workerData, isMainThread } = require('worker_threads');
+    const { Worker, MessageChannel, isMainThread } = require('worker_threads');
 
     if (isMainThread) {
         const { log } = require('../utils/log.js');
         const EventCenter = require('./EventCenter.js');
 
+        // 用独立 MessageChannel 通信：Worker 自带的内部端口无法单独 unref，
+        // 空闲线程会阻止进程退出；自有 port 空闲时 unref、任务在途时 ref
+        const { port1, port2 } = new MessageChannel();
+
         const worker = new Worker(thisFileName, {
-            workerData: '',
+            workerData: { port: port2 },
+            transferList: [port2],
         });
+
+        worker.unref();
 
         // 当前挂起任务的 reject；worker 崩溃/退出时用于释放调用方
         let pendingReject = null;
@@ -17,6 +24,8 @@ module.exports = function (thisFileName) {
         worker.on('error', (error) => {
             log('parsePDF.worker error:', error && (error.stack || error.message));
 
+            port1.unref();
+
             if (pendingReject) {
                 pendingReject(error instanceof Error ? error : new Error(String(error)));
                 pendingReject = null;
@@ -24,6 +33,8 @@ module.exports = function (thisFileName) {
         });
 
         worker.on('exit', (code) => {
+            port1.unref();
+
             if (pendingReject) {
                 pendingReject(new Error(`parsePDF.worker 意外退出，exit code: ${code}`));
                 pendingReject = null;
@@ -34,17 +45,26 @@ module.exports = function (thisFileName) {
             }
         });
 
-        const eventCetner = new EventCenter(worker);
+        const eventCetner = new EventCenter(port1);
+
+        // 注意：EventCenter 构造中注册 on('message') 会使 port 重新 ref，
+        // 空闲 unref 必须放在构造之后才生效
+        port1.unref();
 
         return {
             parsePDF(filePath) {
                 return new Promise((resolve, reject) => {
                     pendingReject = reject;
 
+                    // 解析在途时保持 ref，防止进程在无其他句柄时提前退出
+                    port1.ref();
+
                     eventCetner.post('parsePDF', filePath);
 
                     eventCetner.once('parsePDF', (res) => {
                         pendingReject = null;
+
+                        port1.unref();
 
                         if (res && res.__error) {
                             reject(new Error(res.message));
@@ -78,6 +98,8 @@ module.exports = function (thisFileName) {
             },
             // 终止 worker 线程
             terminate() {
+                port1.unref();
+
                 return worker.terminate();
             },
             // 线程退出（含主动 terminate）后的回调，供线程池移除引用
@@ -88,6 +110,7 @@ module.exports = function (thisFileName) {
     } else {
         const path = require('path');
         const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.mjs');
+        const { workerData } = require('worker_threads');
 
         const CacheFile = require('../utils/CacheFile.js');
         const { log, setCustomHandler } = require('../utils/log.js');
@@ -95,7 +118,8 @@ module.exports = function (thisFileName) {
 
         const EventCenter = require('./EventCenter.js');
 
-        const eventCetner = new EventCenter(parentPort);
+        // 主线程通过 MessageChannel 移交的端口通信
+        const eventCetner = new EventCenter(workerData.port);
 
         async function parsePDF(filePath) {
             log('parsePDF.worker.factory.js', 'parsePDF', '开始解析PDF文件：', filePath);
@@ -239,33 +263,47 @@ module.exports = function (thisFileName) {
 
             log('parsePDF.worker.factory.js', '_getPageImages', '开始缓存图片');
 
-            let images = [];
+            // 页内按对象名+尺寸去重（pdfjs 同页内同名必同图）
+            const seen = new Set();
 
-            for (let i = 0; i < imgs.length; i++) {
-                let { data, width, height, name } = imgs[i];
+            const uniqueImgs = imgs.filter(({ name, width, height }) => {
+                const key = `${name}_${width}x${height}`;
 
-                if (images.find((img) => img.name === name && img.width === width && img.height === height)) {
-                    // 存在相同图片
-                    continue;
+                if (seen.has(key)) {
+                    return false;
                 }
 
-                // 缓存图片。pdfjs 的对象名（img_N）在每页都会重置编号，
-                // 跨页同名可能指向不同图片，文件名中附加页号避免互相覆盖
-                const uniqueName = `${name}_p${pageNumber}`;
+                seen.add(key);
 
-                // 缓存图片
-                let imgInfo = await cacheFile.saveImage({ data, width, height, name: uniqueName });
+                return true;
+            });
 
-                if (imgInfo) {
-                    images.push({
+            // 并行落盘：sharp 为异步原生调用，串行 await 会放大每张图的编码等待。
+            // 图片像素数据此时已全部驻留内存（_extractImages 一次性取出），
+            // 并行保存不会增加内存峰值
+            const saved = await Promise.all(
+                uniqueImgs.map(async ({ data, width, height, name }) => {
+                    // 缓存图片。pdfjs 的对象名（img_N）在每页都会重置编号，
+                    // 跨页同名可能指向不同图片，文件名中附加页号避免互相覆盖
+                    const uniqueName = `${name}_p${pageNumber}`;
+
+                    const imgInfo = await cacheFile.saveImage({ data, width, height, name: uniqueName });
+
+                    if (!imgInfo) {
+                        return null;
+                    }
+
+                    return {
                         name,
                         pageNumber,
                         ...imgInfo,
                         width,
                         height,
-                    });
-                }
-            }
+                    };
+                })
+            );
+
+            const images = saved.filter((img) => img !== null);
 
             log('parsePDF.worker.factory.js', '_getPageImages', '解析页面图片完毕：', images.length);
 

@@ -11,13 +11,22 @@ class WorkerMultiThreading {
         // 队列空闲信号：队列满时任务挂起等待，由任务完成方唤醒，避免轮询
         this._slotSignal = null;
         this._slotResolve = null;
+
+        // 关闭标志：shutdown 后拒绝新任务，避免调用方永久挂起
+        this.closed = false;
     }
 
-    register(worker) {
+    // 单个 worker 允许的最大并发在途任务数。
+    // >1 时同一线程可积压多个任务，配合 worker 内的微批合并
+    // 大幅减少消息往返；计算密集的 diff worker 使用较大值
+    static DEFAULT_MAX_CONCURRENT = 1;
+
+    register(worker, { maxConcurrent = 1 } = {}) {
         const workerItem = {
             id: uuidv4(),
             worker,
-            busy: false,
+            inflight: 0,
+            maxConcurrent: Math.max(1, maxConcurrent),
             dead: false,
         };
 
@@ -46,7 +55,37 @@ class WorkerMultiThreading {
         });
     }
 
+    // 关闭线程池：终止全部线程并释放等待中的任务。
+    // 用于进程结束前主动回收资源；关闭后再 handle 会直接 reject。
+    shutdown() {
+        if (this.closed) {
+            return;
+        }
+
+        this.closed = true;
+
+        const error = new Error('thread pool has been closed');
+
+        this.waiting.forEach((taskItem) => {
+            taskItem.error(error);
+        });
+
+        this.waiting.length = 0;
+
+        this.worker.forEach((item) => {
+            item.dead = true;
+
+            if (item.worker && typeof item.worker.terminate === 'function') {
+                Promise.resolve(item.worker.terminate()).catch(() => {});
+            }
+        });
+    }
+
     handle(task) {
+        if (this.closed) {
+            return Promise.reject(new Error('thread pool has been closed'));
+        }
+
         return new Promise((resolve, reject) => {
             const taskItem = {
                 id: uuidv4(),
@@ -92,38 +131,46 @@ class WorkerMultiThreading {
     }
 
     solve() {
-        // 首个空闲且未失效的worker
-        const workerItem = this.worker.find((w) => !w.busy && !w.dead);
+        // 持续分发：优先分给在途任务最少的 worker（负载均衡）。
+        // 每个线程可有多个在途任务，供 worker 侧微批合并成一次消息
+        while (this.waiting.length) {
+            let candidate = null;
 
-        if (!workerItem) {
-            return;
+            for (const w of this.worker) {
+                if (w.dead || w.inflight >= w.maxConcurrent) {
+                    continue;
+                }
+
+                if (!candidate || w.inflight < candidate.inflight) {
+                    candidate = w;
+                }
+            }
+
+            if (!candidate) {
+                return;
+            }
+
+            // 列队头部第一个
+            const headWaiting = this.waiting.shift();
+
+            candidate.inflight++;
+
+            candidate.worker(headWaiting.task)
+                .then((result) => {
+                    headWaiting.success(result);
+                })
+                .catch((e) => {
+                    headWaiting.error(e);
+                })
+                .finally(() => {
+                    candidate.inflight--;
+
+                    // 任务完成释放队列空间，唤醒等待提交的任务
+                    this._notifySlot();
+
+                    this.solve();
+                });
         }
-
-        if (!this.waiting.length) {
-            return;
-        }
-
-        // 列队头部第一个
-        const headWaiting = this.waiting.shift();
-
-        workerItem.busy = true;
-
-        workerItem
-            .worker(headWaiting.task)
-            .then((result) => {
-                headWaiting.success(result);
-            })
-            .catch((e) => {
-                headWaiting.error(e);
-            })
-            .finally(() => {
-                workerItem.busy = false;
-
-                // 任务完成释放队列空间，唤醒等待提交的任务
-                this._notifySlot();
-
-                this.solve();
-            });
     }
 }
 

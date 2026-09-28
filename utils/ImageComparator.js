@@ -1,64 +1,57 @@
-const { compareImg: compareImg0 } = require('../worker/sharp.worker.0.js');
-const { compareImg: compareImg1 } = require('../worker/sharp.worker.1.js');
-const { compareImg: compareImg2 } = require('../worker/sharp.worker.2.js');
-const { compareImg: compareImg3 } = require('../worker/sharp.worker.3.js');
-const { compareImg: compareImg4 } = require('../worker/sharp.worker.4.js');
-const { compareImg: compareImg5 } = require('../worker/sharp.worker.5.js');
-const { compareImg: compareImg6 } = require('../worker/sharp.worker.6.js');
-const { compareImg: compareImg7 } = require('../worker/sharp.worker.7.js');
-const { compareImg: compareImg8 } = require('../worker/sharp.worker.8.js');
-const { compareImg: compareImg9 } = require('../worker/sharp.worker.9.js');
-const { compareImg: compareImg10 } = require('../worker/sharp.worker.10.js');
-const { compareImg: compareImg11 } = require('../worker/sharp.worker.11.js');
-const { compareImg: compareImg12 } = require('../worker/sharp.worker.12.js');
-const { compareImg: compareImg13 } = require('../worker/sharp.worker.13.js');
-const { compareImg: compareImg14 } = require('../worker/sharp.worker.14.js');
-const { compareImg: compareImg15 } = require('../worker/sharp.worker.15.js');
-const { compareImg: compareImg16 } = require('../worker/sharp.worker.16.js');
-const { compareImg: compareImg17 } = require('../worker/sharp.worker.17.js');
-const { compareImg: compareImg18 } = require('../worker/sharp.worker.18.js');
-const { compareImg: compareImg19 } = require('../worker/sharp.worker.19.js');
-
 const factoryProgress = require('./factoryProgress.js');
-const WorkerMultiThreading = require('./WorkerMultiThreading.js');
-const smartChunkProcessor = require('./SmartChunkProcessor.js');
 const { log } = require('./log.js');
 
-const workerMultiThreading = new WorkerMultiThreading();
-
-function regWorker(type = 'multi') {
-    if (!workerMultiThreading.worker.length) {
-        workerMultiThreading.register(compareImg0);
+/**
+ * 比较两个 dHash（0/1 字符串）：相同位数 / 较长哈希的位数
+ * 哈希在解析期已预计算，对比只是百次字符比较（微秒级），
+ * 直接在主线程执行比一次 worker 消息往返更快。
+ */
+function compareHashes(hashA, hashB) {
+    if (!hashA || !hashB) {
+        return 0;
     }
 
-    if (type === 'multi' && workerMultiThreading.worker.length === 1) {
-        workerMultiThreading.register(compareImg1);
-        workerMultiThreading.register(compareImg2);
-        workerMultiThreading.register(compareImg3);
-        workerMultiThreading.register(compareImg4);
-        workerMultiThreading.register(compareImg5);
-        workerMultiThreading.register(compareImg6);
-        workerMultiThreading.register(compareImg7);
-        workerMultiThreading.register(compareImg8);
-        workerMultiThreading.register(compareImg9);
-        workerMultiThreading.register(compareImg10);
-        workerMultiThreading.register(compareImg11);
-        workerMultiThreading.register(compareImg12);
-        workerMultiThreading.register(compareImg13);
-        workerMultiThreading.register(compareImg14);
-        workerMultiThreading.register(compareImg15);
-        workerMultiThreading.register(compareImg16);
-        workerMultiThreading.register(compareImg17);
-        workerMultiThreading.register(compareImg18);
-        workerMultiThreading.register(compareImg19);
+    const length = Math.max(hashA.length, hashB.length);
+
+    let sameCount = 0;
+
+    for (let i = 0; i < length; i++) {
+        if (hashA[i] === hashB[i]) {
+            sameCount++;
+        }
     }
 
-    if (type === 'single' && workerMultiThreading.worker.length > 1) {
-        workerMultiThreading.keep(1);
-    }
+    return sameCount / length;
 }
 
-regWorker('multi');
+/**
+ * 按图片哈希去重。
+ * 页眉、logo、印章等图片会在每页重复出现，解析期只做页内去重；
+ * 若直接按实例双重循环，两个百页文档的相同页眉会组合出上万次
+ * 结果完全相同的对比。先折叠为唯一哈希再对比，结果附带各侧出现的全部页码。
+ */
+function groupByHash(images) {
+    const map = new Map();
+
+    for (const img of images) {
+        if (!img.imageHash) {
+            continue;
+        }
+
+        let entry = map.get(img.imageHash);
+
+        if (!entry) {
+            entry = { rep: img, pages: [] };
+            map.set(img.imageHash, entry);
+        }
+
+        if (!entry.pages.includes(img.pageNumber)) {
+            entry.pages.push(img.pageNumber);
+        }
+    }
+
+    return map;
+}
 
 class ImageComparator {
     constructor({
@@ -75,77 +68,63 @@ class ImageComparator {
         this.processHandler = null;
     }
 
-    static regWorker = regWorker;
+    // 兼容 updateSettings 的调用：图片对比已改为纯内存计算，不再创建 worker 线程
+    static regWorker() {}
 
     async compareImages(bidA, bidB) {
         log('ImageComparator.js', 'compareImages', '开始对比图片');
 
-        // 定义过滤函数
-        const filterFn = (imgA, imgB) => {
-            const { width: widthA, height: heightA } = imgA;
-            const { width: widthB, height: heightB } = imgB;
+        const groupsA = groupByHash(bidA);
+        const groupsB = groupByHash(bidB);
 
-            // 图片尺寸小于最小尺寸，跳过
-            if (
-                widthA < this.options.minSize ||
-                heightA < this.options.minSize ||
-                widthB < this.options.minSize ||
-                heightB < this.options.minSize
-            ) {
-                return false;
+        const matches = [];
+
+        // 唯一哈希间的组合数即精确总数，进度无需再修正
+        const progressCallback = factoryProgress(groupsA.size * groupsB.size, this.processHandler);
+
+        for (const [hashA, entryA] of groupsA) {
+            const { rep: repA } = entryA;
+
+            for (const [hashB, entryB] of groupsB) {
+                progressCallback();
+
+                const { rep: repB } = entryB;
+
+                // 图片尺寸小于最小尺寸，跳过
+                if (
+                    repA.width < this.options.minSize ||
+                    repA.height < this.options.minSize ||
+                    repB.width < this.options.minSize ||
+                    repB.height < this.options.minSize
+                ) {
+                    continue;
+                }
+
+                const sizeRatio = repA.height / repA.width / (repB.height / repB.width);
+
+                // 尺寸比例相差过大，跳过
+                if (sizeRatio < 1 / this.options.ratioTolerance || sizeRatio > this.options.ratioTolerance) {
+                    continue;
+                }
+
+                const similarity = compareHashes(hashA, hashB);
+
+                if (similarity >= this.options.similarity) {
+                    matches.push({
+                        images: [repA.image, repB.image],
+                        pages: [repA.pageNumber, repB.pageNumber],
+                        // 该图片在各侧出现的全部页码，替代旧版按实例展开的笛卡尔积记录
+                        pagesA: entryA.pages,
+                        pagesB: entryB.pages,
+                        similarity,
+                    });
+                }
             }
+        }
 
-            const sizeRatio = heightA / widthA / (heightB / widthB);
+        log('ImageComparator.js', 'compareImages', '对比图片结束：', matches.length);
 
-            // 尺寸比例相差过大，跳过（独立容差参数，避免与相似度阈值混用导致预筛过严）
-            if (sizeRatio < 1 / this.options.ratioTolerance || sizeRatio > this.options.ratioTolerance) {
-                return false;
-            }
-
-            return true;
-        };
-
-        // 定义任务创建函数
-        const taskCreator = (imgA, imgB) => {
-            const { pageNumber: pageA, imageHash: imageHashA } = imgA;
-            const { pageNumber: pageB, imageHash: imageHashB } = imgB;
-
-            return workerMultiThreading
-                .handle({
-                    hashA: imageHashA,
-                    hashB: imageHashB,
-                    pageA,
-                    pageB,
-                })
-                .then((similarity) => {
-                    if (similarity >= this.options.similarity) {
-                        return {
-                            images: [imgA.image, imgB.image],
-                            pages: [imgA.pageNumber, imgB.pageNumber],
-                            similarity,
-                        };
-                    }
-
-                    return null;
-                });
-        };
-
-        // 移除预先统计：使用粗略估计
-        const estimatedTotal = bidA.length * bidB.length;
-
-        // 构建进度回调
-        const progressCallback = factoryProgress(estimatedTotal, this.processHandler);
-
-        // 使用较小的 chunkSize 降低内存峰值
-        const result = await smartChunkProcessor.processDoubleLoop(bidA, bidB, taskCreator, filterFn, {
-            chunkSize: 100,
-            onProgress: progressCallback,
-            estimatedTotal: estimatedTotal,
-        });
-
-        log('ImageComparator.js', 'compareImages', '对比图片结束：', result.length);
-
-        return result;
+        return matches;
     }
 }
 

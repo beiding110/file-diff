@@ -186,8 +186,22 @@ class CacheFile {
         const fileSavePath = path.join(targetPath, `./${name}.png`);
 
         if (this.checkFileExist(fileSavePath)) {
-            // 已经存在，则不进行重新存放
-            return false;
+            // 之前解析中断时图片已落盘但 parse.json 未写入（断点续传场景）。
+            // 从已缓存文件重算哈希并返回，避免该图片从解析结果中丢失
+            try {
+                log('CacheFile.js', 'saveImage', '图片已存在，重算哈希：', fileSavePath);
+
+                const imageHash = await _getImageHash(sharp(fileSavePath));
+
+                return {
+                    image: fileSavePath,
+                    imageHash,
+                };
+            } catch (e) {
+                log('CacheFile.js', 'saveImage', '读取已存在图片失败，跳过：', e);
+
+                return false;
+            }
         }
 
         // 计算通道数，可能是3/4通道
@@ -218,8 +232,8 @@ class CacheFile {
             // 计算hash
             result.imageHash = await _getImageHash(orgImg);
 
-            // 原图
-            await orgImg.png().toFile(fileSavePath);
+            // 原图（降低压缩级别换取编码速度，缓存图仅供展示用）
+            await orgImg.png({ compressionLevel: 3 }).toFile(fileSavePath);
 
             result.image = fileSavePath;
 
@@ -338,26 +352,19 @@ class CacheFile {
         }
 
         // 获取全部文件
-        if (!fs.existsSync(resultFolderPath)) {
+        if (!(await asyncFileUtils.exists(resultFolderPath))) {
             return [];
         }
 
-        const files = _getAllFilesInfo(resultFolderPath);
-        const jsonContext = [];
+        const files = await _getAllFilesInfo(resultFolderPath);
+        const jsonFiles = files.filter((item) => !item.isDirectory && /\.(json)$/.test(item.name));
 
-        // 异步读取所有 JSON 文件
-        for (const item of files) {
-            if (/\.(json)$/.test(item.name)) {
-                try {
-                    const context = await asyncFileUtils.readJsonFile(item.path);
-                    jsonContext.push(context);
-                } catch (error) {
-                    log('CacheFile.js', 'getResult', `读取文件失败:`, item.path, error.message);
-                }
-            }
-        }
+        // 并发读取，避免大结果集时逐个 await 的串行 IO 等待
+        const jsonContext = await asyncFileUtils.pMap(jsonFiles, async (item) => {
+            return await asyncFileUtils.readJsonFile(item.path);
+        });
 
-        return _groupBy(jsonContext, 'groupid');
+        return _groupBy(jsonContext.filter((item) => item !== undefined), 'groupid');
     }
 }
 
@@ -366,36 +373,41 @@ class CacheFile {
  * @param {String} dirPath 文件夹地址
  * @returns
  */
-function _getAllFilesInfo(dirPath) {
+async function _getAllFilesInfo(dirPath) {
     const itemsInfo = [];
+    const { readdir, stat } = fs.promises;
 
-    function traverseDirectory(currentPath) {
-        const items = fs.readdirSync(currentPath);
+    // 异步遍历，避免大结果集时同步 readdir/stat 阻塞事件循环
+    async function traverseDirectory(currentPath) {
+        const items = await readdir(currentPath);
 
         for (const item of items) {
             const itemPath = path.join(currentPath, item);
-            const stat = fs.statSync(itemPath);
 
-            const statIsDir = stat.isDirectory();
+            // 注意：局部变量不能命名为 stat，否则遮蔽外层解构的 stat 函数
+            // （const 暂时性死区会导致 "Cannot access 'stat' before initialization"）
+            const itemStat = await stat(itemPath);
 
-            if (stat.isFile() || statIsDir) {
+            const statIsDir = itemStat.isDirectory();
+
+            if (itemStat.isFile() || statIsDir) {
                 itemsInfo.push({
                     name: item,
                     path: itemPath,
-                    size: stat.size,
-                    createdAt: stat.ctime,
-                    modifiedAt: stat.mtime,
+                    size: itemStat.size,
+                    createdAt: itemStat.ctime,
+                    modifiedAt: itemStat.mtime,
                     isDirectory: statIsDir,
                 });
             }
 
             if (statIsDir) {
-                traverseDirectory(itemPath);
+                await traverseDirectory(itemPath);
             }
         }
     }
 
-    traverseDirectory(dirPath);
+    await traverseDirectory(dirPath);
 
     return itemsInfo;
 }
