@@ -43,6 +43,20 @@ class EventCenter {
         });
     }
 
+    // 移除事件监听（不传 cb 时移除该事件的全部监听）
+    off(name, cb) {
+        if (!this._bus[name]) {
+            return;
+        }
+
+        if (!cb) {
+            this._bus[name].length = 0;
+            return;
+        }
+
+        this._bus[name] = this._bus[name].filter((item) => item.handler !== cb);
+    }
+
     // 触发事件
     post(name, ...args) {
         this._worker.postMessage({

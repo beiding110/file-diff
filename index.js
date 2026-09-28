@@ -144,8 +144,13 @@ class BidComparator {
                 // 从缓存读取或从文件加载
                 const getFile = async (fileHash) => {
                     if (!loadedFilesCache.has(fileHash)) {
-                        const data = CacheFile.readCacheByHash(fileHash);
-                        loadedFilesCache.set(fileHash, data instanceof Promise ? await data : data);
+                        const data = await CacheFile.readCacheByHash(fileHash);
+
+                        if (!data) {
+                            throw new Error(`未找到文件 ${fileHash} 的解析缓存，请先 preload 后再对比`);
+                        }
+
+                        loadedFilesCache.set(fileHash, data);
                     }
                     return loadedFilesCache.get(fileHash);
                 };
@@ -162,11 +167,11 @@ class BidComparator {
 
                 // 增量保存单个结果，避免内存累积
                 await CacheFile.appendResult(result, GROUPID, result.uuid);
-
-                // 立即清空缓存，释放内存
-                // 下一对文件需要时会重新加载
-                loadedFilesCache.clear();
             }
+
+            // 批次之间清空缓存，让同批次内的对比对共享已加载文件，
+            // 同时避免大量文件时内存持续增长
+            loadedFilesCache.clear();
 
             // 批次之间稍作等待，让 GC 有机会回收内存
             if (batchEnd < this.bidDocsMatrix.length) {
@@ -221,6 +226,7 @@ class BidComparator {
                 image: {
                     similarity: this.imageComparator.options.similarity,
                     minSize: this.imageComparator.options.minSize,
+                    ratioTolerance: this.imageComparator.options.ratioTolerance,
                 },
             },
         };
@@ -305,7 +311,7 @@ class BidComparator {
         }
 
         if (image) {
-            const { similarity, minSize } = image;
+            const { similarity, minSize, ratioTolerance } = image;
 
             if (similarity) {
                 _STORE_SETTINGS_IMAGE.similarity = similarity;
@@ -313,6 +319,10 @@ class BidComparator {
 
             if (minSize) {
                 _STORE_SETTINGS_IMAGE.minSize = minSize;
+            }
+
+            if (ratioTolerance) {
+                _STORE_SETTINGS_IMAGE.ratioTolerance = ratioTolerance;
             }
         }
 

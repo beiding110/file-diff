@@ -54,7 +54,7 @@ function regWorker(type = 'multi') {
     }
 
     if (type === 'single' && workerMultiThreading.worker.length > 1) {
-        workerMultiThreading.logoff(1);
+        workerMultiThreading.keep(1);
     }
 }
 
@@ -64,10 +64,12 @@ class ImageComparator {
     constructor({
         similarity = 0.9, // 相似度目标
         minSize = 100, // 最小图片宽高，小于的不参与对比
+        ratioTolerance = 1.1, // 宽高比预筛容差，比值超出 [1/ratioTolerance, ratioTolerance] 跳过
     }) {
         this.options = {
             similarity,
             minSize,
+            ratioTolerance,
         };
 
         this.processHandler = null;
@@ -95,8 +97,8 @@ class ImageComparator {
 
             const sizeRatio = heightA / widthA / (heightB / widthB);
 
-            // 尺寸比例相差过大，跳过
-            if (sizeRatio < this.options.similarity || sizeRatio > 2 - this.options.similarity) {
+            // 尺寸比例相差过大，跳过（独立容差参数，避免与相似度阈值混用导致预筛过严）
+            if (sizeRatio < 1 / this.options.ratioTolerance || sizeRatio > this.options.ratioTolerance) {
                 return false;
             }
 
@@ -108,26 +110,24 @@ class ImageComparator {
             const { pageNumber: pageA, imageHash: imageHashA } = imgA;
             const { pageNumber: pageB, imageHash: imageHashB } = imgB;
 
-            return new Promise((resolve) => {
-                workerMultiThreading
-                    .handle({
-                        hashA: imageHashA,
-                        hashB: imageHashB,
-                        pageA,
-                        pageB,
-                    })
-                    .then((similarity) => {
-                        if (similarity > this.options.similarity) {
-                            resolve({
-                                images: [imgA.image, imgB.image],
-                                pages: [imgA.pageNumber, imgB.pageNumber],
-                                similarity,
-                            });
-                        } else {
-                            resolve(null);
-                        }
-                    });
-            });
+            return workerMultiThreading
+                .handle({
+                    hashA: imageHashA,
+                    hashB: imageHashB,
+                    pageA,
+                    pageB,
+                })
+                .then((similarity) => {
+                    if (similarity >= this.options.similarity) {
+                        return {
+                            images: [imgA.image, imgB.image],
+                            pages: [imgA.pageNumber, imgB.pageNumber],
+                            similarity,
+                        };
+                    }
+
+                    return null;
+                });
         };
 
         // 移除预先统计：使用粗略估计

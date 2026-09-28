@@ -38,80 +38,54 @@ class CacheFile {
         return DIR_PATH;
     }
 
-    static readCacheByHash(hash) {
-        let parseFilePath = path.join(DIR_PATH, FILE_FOLDER_PATH, `./${hash}`, PARSE_FILE_NAME);
+    /**
+     * 按文件 hash 读取解析结果缓存
+     * 统一返回 Promise：命中返回解析对象，未命中或读取失败返回 null
+     * @param {String} hash
+     * @returns {Promise<Object|null>}
+     */
+    static async readCacheByHash(hash) {
+        const parseFilePath = path.join(DIR_PATH, FILE_FOLDER_PATH, `./${hash}`, PARSE_FILE_NAME);
 
-        if (fs.existsSync(parseFilePath)) {
-            // 使用流式读取以减少内存峰值
-            try {
-                // 对于小文件（<10MB），使用原有同步方式
-                const stats = fs.statSync(parseFilePath);
-                if (stats.size < 10 * 1024 * 1024) {
-                    const context = fs.readFileSync(parseFilePath);
-                    return JSON.parse(context);
-                }
-
-                // 对于大文件，使用 Buffer.concat 避免字符串拼接的内存问题
-                return new Promise((resolve, reject) => {
-                    const stream = fs.createReadStream(parseFilePath);
-                    const chunks = [];
-
-                    stream.on('data', (chunk) => {
-                        chunks.push(chunk);
-                    });
-
-                    stream.on('end', () => {
-                        try {
-                            // 使用 Buffer.concat 一次性合并，比字符串拼接更高效
-                            const buffer = Buffer.concat(chunks);
-                            const data = buffer.toString('utf8');
-                            resolve(JSON.parse(data));
-                        } catch (error) {
-                            log('CacheFile.js', 'readCacheByHash', '解析缓存文件失败:', hash, error.message);
-                            reject(error);
-                        }
-                    });
-
-                    stream.on('error', (error) => {
-                        log('CacheFile.js', 'readCacheByHash', '读取缓存文件失败:', hash, error.message);
-                        reject(error);
-                    });
-                });
-            } catch (error) {
-                log('CacheFile.js', 'readCacheByHash', '读取缓存出错:', hash, error.message);
-                return false;
-            }
+        if (!fs.existsSync(parseFilePath)) {
+            return null;
         }
 
-        return false;
+        try {
+            return await asyncFileUtils.readJsonFile(parseFilePath);
+        } catch (error) {
+            log('CacheFile.js', 'readCacheByHash', '读取缓存出错:', hash, error.message);
+
+            return null;
+        }
     }
 
     /**
-     * promise
+     * promise（异步流式计算，不阻塞事件循环）
      * @param filePath
      * @param algorithm
-     * @returns {Promise<any>}
+     * @returns {Promise<string>}
      */
     hashFile(filePath, algorithm = 'SHA256') {
         return new Promise((resolve, reject) => {
             if (!fs.existsSync(filePath)) {
-                reject('the file does not exist, make sure your file is correct!');
+                reject(new Error(`the file does not exist, make sure your file is correct: ${filePath}`));
                 return;
             }
 
             if (!this.algorithmType.hasOwnProperty(algorithm)) {
-                reject('nonsupport algorithm, make sure your algorithm is [SHA256,SHA1,MD5] !');
+                reject(new Error('nonsupport algorithm, make sure your algorithm is [SHA256,SHA1,MD5] !'));
                 return;
             }
 
             let stream = fs.createReadStream(filePath);
             let hash = crypto.createHash(algorithm.toLowerCase());
 
-            stream.on('data', function (data) {
+            stream.on('data', (data) => {
                 hash.update(data);
             });
 
-            stream.on('end', function () {
+            stream.on('end', () => {
                 let final = hash.digest('hex');
 
                 this.hash = final;
@@ -119,35 +93,10 @@ class CacheFile {
                 resolve(final);
             });
 
-            stream.on('error', function (err) {
+            stream.on('error', (err) => {
                 reject(err);
             });
         });
-    }
-
-    /**
-     * async
-     * @param filePath
-     * @param algorithm
-     * @returns {string|Error}
-     */
-    hashFileAsync(filePath, algorithm = 'SHA256') {
-        if (!fs.existsSync(filePath)) {
-            return new Error('the file does not exist, make sure your file is correct!');
-        }
-        if (!this.algorithmType.hasOwnProperty(algorithm)) {
-            return new Error('nonsupport algorithm, make sure your algorithm is [SHA256,SHA1,MD5] !');
-        }
-
-        let buffer = fs.readFileSync(filePath);
-        let hash = crypto.createHash(algorithm.toLowerCase());
-
-        hash.update(buffer);
-        let final = hash.digest('hex');
-
-        this.hash = final;
-
-        return final;
     }
 
     // 检查缓存情况
@@ -175,16 +124,9 @@ class CacheFile {
 
         let exist = false;
 
-        if (!fs.existsSync(DIR_PATH)) {
-            fs.mkdirSync(DIR_PATH);
-        }
-
-        if (!fs.existsSync(folderPath)) {
-            fs.mkdirSync(folderPath);
-        }
-
         if (!fs.existsSync(fileFolderPath)) {
-            fs.mkdirSync(fileFolderPath);
+            // recursive 确保多级目录一并创建
+            fs.mkdirSync(fileFolderPath, { recursive: true });
         } else {
             exist = true;
         }
@@ -203,7 +145,8 @@ class CacheFile {
     // 将pdf保存到对应目录
     async savePdf(fromFileUrl) {
         if (!this.hash) {
-            await this.hashFileAsync(fromFileUrl);
+            // 异步流式计算哈希，失败时抛出错误由调用方处理
+            await this.hashFile(fromFileUrl);
         }
 
         const { path: fileFolderPath } = this.checkFilePath();
@@ -227,7 +170,7 @@ class CacheFile {
     // 将图片保存至对应目录
     async saveImage({ data, width, height, name }) {
         if (!this.hash) {
-            console.error('请先获取文件hash');
+            throw new Error('请先获取文件hash');
         }
 
         log('CacheFile.js', 'saveImage', '开始缓存图片');
@@ -237,13 +180,8 @@ class CacheFile {
         const targetPath = path.join(fileFolderPath, IMAGES_PATH);
 
         if (!fs.existsSync(targetPath)) {
-            fs.mkdirSync(targetPath);
+            fs.mkdirSync(targetPath, { recursive: true });
         }
-
-        const result = {
-            image: '',
-            imageHash: '',
-        };
 
         const fileSavePath = path.join(targetPath, `./${name}.png`);
 
@@ -253,7 +191,13 @@ class CacheFile {
         }
 
         // 计算通道数，可能是3/4通道
-        let channels = data.length / width / height;
+        const channels = Math.round(data.length / width / height);
+
+        if (channels !== 3 && channels !== 4) {
+            log('CacheFile.js', 'saveImage', '无法识别的通道数，跳过图片：', channels);
+
+            return false;
+        }
 
         log('CacheFile.js', 'saveImage', '使用sharp进行缓存，通道数：', channels);
 
@@ -266,6 +210,11 @@ class CacheFile {
                 },
             });
 
+            const result = {
+                image: '',
+                imageHash: '',
+            };
+
             // 计算hash
             result.imageHash = await _getImageHash(orgImg);
 
@@ -275,17 +224,20 @@ class CacheFile {
             result.image = fileSavePath;
 
             log('CacheFile.js', 'saveImage', '缓存图片完毕：', fileSavePath);
+
+            return result;
         } catch (e) {
             log('CacheFile.js', 'saveImage', '缓存图片失败：', e);
-        }
 
-        return result;
+            // 失败时返回 false，由调用方跳过该图片
+            return false;
+        }
     }
 
     // 保存处理后的内容
     async saveParseInfo(json) {
         if (!this.hash) {
-            console.error('请先获取文件hash');
+            throw new Error('请先获取文件hash');
         }
 
         const { path: fileFolderPath } = this.checkFilePath();
@@ -317,8 +269,8 @@ class CacheFile {
         const resultFileName = `./${resultFileExtraName}.json`;
         const targetPath = path.join(folderPath, resultFileName);
 
-        // 使用异步写入 JSON（不格式化，节省空间）
-        await asyncFileUtils.writeJsonFile(targetPath, json, { formatted: true });
+        // 进行存储
+        await asyncFileUtils.writeJsonFile(targetPath, json);
 
         return targetPath;
     }
@@ -344,8 +296,7 @@ class CacheFile {
         const resultFileName = `./${uuid}.json`;
         const targetPath = path.join(groupFolderPath, resultFileName);
 
-        // 使用异步写入 JSON（不格式化，节省空间）
-        await asyncFileUtils.writeJsonFile(targetPath, resultItem, { formatted: true });
+        await asyncFileUtils.writeJsonFile(targetPath, resultItem);
 
         return targetPath;
     }

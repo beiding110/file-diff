@@ -9,8 +9,29 @@ module.exports = function (thisFileName) {
             workerData: '',
         });
 
+        // 当前挂起任务的 reject；worker 崩溃/退出时用于释放调用方
+        let pendingReject = null;
+        let deadCallback = null;
+        let currentProgressHandler = null;
+
         worker.on('error', (error) => {
-            log(error);
+            log('parsePDF.worker error:', error && (error.stack || error.message));
+
+            if (pendingReject) {
+                pendingReject(error instanceof Error ? error : new Error(String(error)));
+                pendingReject = null;
+            }
+        });
+
+        worker.on('exit', (code) => {
+            if (pendingReject) {
+                pendingReject(new Error(`parsePDF.worker 意外退出，exit code: ${code}`));
+                pendingReject = null;
+            }
+
+            if (typeof deadCallback === 'function') {
+                deadCallback();
+            }
         });
 
         const eventCetner = new EventCenter(worker);
@@ -18,14 +39,18 @@ module.exports = function (thisFileName) {
         return {
             parsePDF(filePath) {
                 return new Promise((resolve, reject) => {
-                    worker.postMessage({
-                        type: 'parsePDF',
-                        args: [filePath],
-                    });
+                    pendingReject = reject;
 
                     eventCetner.post('parsePDF', filePath);
 
                     eventCetner.once('parsePDF', (res) => {
+                        pendingReject = null;
+
+                        if (res && res.__error) {
+                            reject(new Error(res.message));
+                            return;
+                        }
+
                         resolve(res);
                     });
                 });
@@ -38,9 +63,26 @@ module.exports = function (thisFileName) {
                 eventCetner.post('setCustomLogHandler', path, funName);
             },
             setProgressHandler(cb) {
-                eventCetner.on('progress', (...args) => {
-                    cb && cb(...args);
-                });
+                // 先移除旧监听，避免重复设置时回调叠加
+                if (currentProgressHandler) {
+                    eventCetner.off('progress', currentProgressHandler);
+
+                    currentProgressHandler = null;
+                }
+
+                if (cb) {
+                    currentProgressHandler = (...args) => cb(...args);
+
+                    eventCetner.on('progress', currentProgressHandler);
+                }
+            },
+            // 终止 worker 线程
+            terminate() {
+                return worker.terminate();
+            },
+            // 线程退出（含主动 terminate）后的回调，供线程池移除引用
+            onDead(cb) {
+                deadCallback = cb;
             },
         };
     } else {
@@ -50,7 +92,6 @@ module.exports = function (thisFileName) {
         const CacheFile = require('../utils/CacheFile.js');
         const { log, setCustomHandler } = require('../utils/log.js');
         const factoryProgress = require('../utils/factoryProgress.js');
-        const vectorComparator = require('../utils/vectorComparator.js');
 
         const EventCenter = require('./EventCenter.js');
 
@@ -178,15 +219,10 @@ module.exports = function (thisFileName) {
                     return;
                 }
 
-                const vector = vectorComparator.getVector(text);
-
-                let page = {
+                pageTexts.push({
                     pageNumber,
                     text,
-                    vector,
-                };
-
-                pageTexts.push(page);
+                });
             });
 
             log('parsePDF.worker.factory.js', '_getPageTexts', '解析页面文字完毕：', pageTexts.length);
@@ -213,8 +249,12 @@ module.exports = function (thisFileName) {
                     continue;
                 }
 
+                // 缓存图片。pdfjs 的对象名（img_N）在每页都会重置编号，
+                // 跨页同名可能指向不同图片，文件名中附加页号避免互相覆盖
+                const uniqueName = `${name}_p${pageNumber}`;
+
                 // 缓存图片
-                let imgInfo = await cacheFile.saveImage({ data, width, height, name });
+                let imgInfo = await cacheFile.saveImage({ data, width, height, name: uniqueName });
 
                 if (imgInfo) {
                     images.push({
@@ -252,9 +292,11 @@ module.exports = function (thisFileName) {
                     return;
                 }
 
+                const lastStyle = textContent.styles[lastText.fontName] || {};
+                const currStyle = textContent.styles[text.fontName] || {};
+
                 if (
-                    textContent.styles[lastText.fontName].textContent ===
-                        textContent.styles[text.fontName].textContent && // 字体相同
+                    (lastStyle.fontFamily || lastText.fontName) === (currStyle.fontFamily || text.fontName) && // 字体相同
                     lastText.height === text.height // 字号相同
                 ) {
                     textInDifferentFonts[textInDifferentFonts.length - 1].push(text);
@@ -319,9 +361,8 @@ module.exports = function (thisFileName) {
                         }
                     }
 
-                    lastText = {
-                        ...text,
-                    };
+                    // 只读引用，无需拷贝
+                    lastText = text;
 
                     // 最后一个
                     if (index === fontGroup.length - 1) {
@@ -409,10 +450,11 @@ module.exports = function (thisFileName) {
                         .trim();
 
                     // 将断句按标点拆分
-                    const sentences =
-                        normalized.match(
+                    const sentences = (normalized.match(
                             /([^\n!?;。！？；\u203C\u203D\u2047-\u2049]+([!?;。！？；\u203C\u203D\u2047-\u2049]|$))/gmu
-                        ) || [].map((s) => s.replace(/^\s+|\s+$/g, '')).filter((s) => s.length > 0);
+                        ) || [])
+                        .map((s) => s.replace(/^\s+|\s+$/g, ''))
+                        .filter((s) => s.length > 0);
 
                     result = [...result, ...sentences];
                 });
@@ -489,9 +531,17 @@ module.exports = function (thisFileName) {
         }
 
         eventCetner.on('parsePDF', async (filePath) => {
-            const res = await parsePDF(filePath);
+            try {
+                const res = await parsePDF(filePath);
 
-            eventCetner.post('parsePDF', res);
+                eventCetner.post('parsePDF', res);
+            } catch (error) {
+                // 回传错误，避免线程崩溃导致主线程调用方永久挂起
+                eventCetner.post('parsePDF', {
+                    __error: true,
+                    message: error && (error.stack || error.message),
+                });
+            }
         });
 
         eventCetner.on('setCachePath', (path) => {

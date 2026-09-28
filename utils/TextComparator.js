@@ -54,7 +54,7 @@ function regWorker(type = 'multi') {
     }
 
     if (type === 'single' && workerMultiThreading.worker.length > 1) {
-        workerMultiThreading.logoff(1);
+        workerMultiThreading.keep(1);
     }
 }
 
@@ -87,10 +87,8 @@ class TextComparator {
             return textItem.text.length >= this.options.minLength;
         });
 
-        let progress = factoryProgress(sentencesA.length + sentencesB.length, this.removeProgressHandler);
-
-        const cleanA = await this.removeBiddingContent(sentencesA, progress);
-        const cleanB = await this.removeBiddingContent(sentencesB, progress);
+        const cleanA = await this.removeBiddingContent(sentencesA);
+        const cleanB = await this.removeBiddingContent(sentencesB);
 
         const result = await this.compareTexts(cleanA, cleanB);
 
@@ -98,7 +96,7 @@ class TextComparator {
     }
 
     // 清除投标文件中，招标文件部分
-    async removeBiddingContent(texts, progress) {
+    async removeBiddingContent(texts, progressHandler) {
         if (!this.biddingContent) {
             log('TextComparator.js', 'removeBiddingContent', '没有检测到招标文件，无需排除内容');
 
@@ -121,77 +119,47 @@ class TextComparator {
             return true;
         };
 
-        // 流式处理：使用 Map 跟踪每个文本的最大相似度
-        const textSimilarityMap = new Map();
+        // 与招标文件内容相似（达到阈值）的文本集合，最后统一剔除。
+        // 以输入 texts 为基准构建结果，保证从未参与对比的文本
+        // （与所有招标文本长度比都不符、被 filterFn 跳过的）不会被误删
+        const similarTexts = new Set();
 
         // 定义任务创建函数
         const taskCreator = (pa, pb) => {
-            return new Promise((resolve) => {
-                workerMultiThreading
-                    .handle({
-                        a: pa.text,
-                        pageA: pa.pageNumber,
-                        vectorA: pa.vector,
+            return workerMultiThreading
+                .handle({
+                    a: pa.text,
+                    b: pb.text,
 
-                        b: pb.text,
-                        pageB: pb.pageNumber,
-                        vectorB: pb.vector,
-
-                        threshold: this.options.threshold,
-                    })
-                    .then(({ similarity }) => {
-                        // 返回比对结果
-                        resolve({
-                            textA: pa.text,
-                            pageA: pa.pageNumber,
-                            similarity,
-                        });
-                    });
-            });
+                    threshold: this.options.threshold,
+                })
+                .then(({ similarity }) => ({
+                    textA: pa.text,
+                    similarity,
+                }));
         };
 
         // 使用 texts.length * biddingTexts.length 作为粗略估计用于进度显示
         const estimatedTotal = texts.length * biddingTexts.length;
 
-        // 构建进度回调（使用估计值）
-        const progressCallback = factoryProgress(estimatedTotal, progress);
+        // 构建进度回调（直接使用用户回调，避免 factoryProgress 嵌套导致计数错乱）
+        const progressCallback = factoryProgress(estimatedTotal, progressHandler || this.removeProgressHandler);
 
-        // 使用流式处理：onResult 回调直接更新 Map，不累积结果数组
+        // 使用流式处理：onResult 回调直接更新集合，不累积结果数组
         await smartChunkProcessor.processDoubleLoop(texts, biddingTexts, taskCreator, filterFn, {
             chunkSize: 500,
             onProgress: progressCallback,
             estimatedTotal: estimatedTotal,
-            onResult: (comparison) => {
-                // 流式处理：立即更新 Map，不存储所有比较结果
-                const key = `${comparison.pageA}<_>${comparison.textA}`;
-
-                if (!textSimilarityMap.has(key)) {
-                    textSimilarityMap.set(key, comparison.similarity);
-                } else {
-                    // 保留最大相似度
-                    const currentMax = textSimilarityMap.get(key);
-                    if (comparison.similarity > currentMax) {
-                        textSimilarityMap.set(key, comparison.similarity);
-                    }
+            onResult: ({ textA, similarity }) => {
+                // 与任一招标文本相似度达到阈值，即认为属于招标文件内容
+                if (similarity >= this.options.threshold) {
+                    similarTexts.add(textA);
                 }
             },
         });
 
-        // 根据 Map 构建结果：只保留没有相似度的文本
-        const result = [];
-        const seenKeys = new Set();
-
-        for (const [key, maxSimilarity] of textSimilarityMap) {
-            // 只保留没有相似度的文本，且每个文本只保留一次
-            if (maxSimilarity < this.options.threshold && !seenKeys.has(key)) {
-                const [page, text] = key.split('<_>');
-                result.push({
-                    text: text,
-                    pageNumber: parseInt(page, 10),
-                });
-                seenKeys.add(key);
-            }
-        }
+        // 只保留与招标文件内容不相似的文本
+        const result = texts.filter((textItem) => !similarTexts.has(textItem.text));
 
         log('TextComparator.js', 'removeBiddingContent', '排除文字完毕：', result.length);
 
@@ -215,39 +183,35 @@ class TextComparator {
 
         // 定义任务创建函数
         const taskCreator = (pa, pb) => {
-            const threadItem = {
-                a: pa.text,
-                pageA: pa.pageNumber,
-                vectorA: pa.vector,
+            return workerMultiThreading
+                .handle({
+                    a: pa.text,
+                    pageA: pa.pageNumber,
 
-                b: pb.text,
-                pageB: pb.pageNumber,
-                vectorB: pb.vector,
+                    b: pb.text,
+                    pageB: pb.pageNumber,
 
-                threshold: this.options.threshold,
-            };
-
-            return new Promise((resolve) => {
-                workerMultiThreading.handle(threadItem).then(({ a, b, similarity }) => {
+                    threshold: this.options.threshold,
+                })
+                .then(({ a, b, similarity }) => {
                     if (similarity >= this.options.threshold) {
-                        resolve({
+                        return {
                             a: {
-                                text: threadItem.a,
+                                text: pa.text,
                                 textB: a,
-                                pageNumber: threadItem.pageA,
+                                pageNumber: pa.pageNumber,
                             },
                             b: {
-                                text: threadItem.b,
+                                text: pb.text,
                                 textB: b,
-                                pageNumber: threadItem.pageB,
+                                pageNumber: pb.pageNumber,
                             },
                             similarity,
-                        });
-                    } else {
-                        resolve(null);
+                        };
                     }
+
+                    return null;
                 });
-            });
         };
 
         // 移除预先统计：使用粗略估计

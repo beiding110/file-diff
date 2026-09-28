@@ -76,17 +76,23 @@ async function readFile(filePath, options = {}) {
             return readFileAsync(filePath, options);
         }
 
-        // 大文件使用流式读取
+        // 大文件使用流式读取（有 encoding 时拼接字符串，否则拼接 Buffer）
         return new Promise((resolve, reject) => {
             const stream = fs.createReadStream(filePath, options);
-            let data = '';
+            const isText = typeof options === 'string' || options?.encoding;
+            let data = isText ? '' : [];
+            let buffer = null;
 
             stream.on('data', (chunk) => {
-                data += chunk;
+                if (isText) {
+                    data += chunk;
+                } else {
+                    buffer = buffer ? Buffer.concat([buffer, chunk]) : chunk;
+                }
             });
 
             stream.on('end', () => {
-                resolve(data);
+                resolve(isText ? data : buffer);
             });
 
             stream.on('error', (err) => {

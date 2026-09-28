@@ -32,9 +32,15 @@ BidComparator.updateSettings({
 comparator
     .processFiles(
         [
+            // './docs/g1-1.pdf',
+            // './docs/g1-2.pdf',
+
             './docs/g2-1.pdf',
             './docs/g2-2.pdf',
             // './docs/g2-3.pdf',
+
+            // './docs/g3-1.pdf',
+            // './docs/g3-2.pdf',
         ],
         './docs/g2-exclude.pdf'
     )
