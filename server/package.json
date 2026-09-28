@@ -1,0 +1,19 @@
+{
+    "name": "bid-comparator-server",
+    "version": "1.0.0",
+    "description": "BidComparator HTTP 服务：内存任务队列 + SSE 进度推送，无需 Redis",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "test": "node test/test_api.js"
+    },
+    "engines": {
+        "node": ">=18"
+    },
+    "dependencies": {
+        "@fastify/cors": "^8.5.0",
+        "@fastify/multipart": "^7.7.3",
+        "@fastify/static": "^6.12.0",
+        "fastify": "^4.25.0"
+    }
+}
