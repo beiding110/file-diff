@@ -6,37 +6,42 @@
 - 🗺️ 图片
 - 💼 文件属性
 
-支持单线程、多线程对比。对比速率如下：
+支持单线程、多线程对比。多线程模式下文字对比由 diff 线程池并行执行（线程数默认为 CPU 核数，上限 20），图片对比为解析期预计算哈希后的纯内存计算，与线程模式无关。对比速率如下：
 
-| 线程         | 单线程         | 多线程         |
-| ------------ | -------------- | -------------- |
-| 文字对比速率 | 29200 段文字/s | 56054 段文字/s |
-| 图片对比速率 | 10000 图/s     | 23002 图/s     |
-| 对比时间     | 22.53s         | 3.14s          |
+|线程|单线程|多线程（4 线程）|
+|---|---|---|
+|文字对比速率|≈4.5 万段文字/s|≈7.5 万段文字/s|
+|图片对比速率|≈100 万图/s|≈100 万图/s|
+|对比时间|≈1.1s|≈0.85s|
 
-速率实验参考文件：
+以上数据实测环境：Intel i5-7400（4 核）/ Node.js 24 / Windows 11，对比设置与下文「使用方法」示例相同。文字对比速率按对比阶段自身耗时折算（不含缓存加载与结果写盘）；「对比时间」为对比阶段端到端耗时，均不含 PDF 解析（首次解析约 15s，由 4 个解析线程并行完成后缓存，重复对比不再解析）。多线程下文字对比速率约为单线程的 1.6 倍，核数更多时并行度相应提高。复测命令：
 
-| 文件     | A 文件   | B 文件   |
-| -------- | -------- | -------- |
-| 文字数量 | 27767 字 | 22810 字 |
-| 图片数量 | 92 图    | 91 图    |
-| 总页数   | 95页     | 92页     |
-| 总大小   | 19.99MB  | 14.84MB  |
+```bash
+node test/test_speed.js multi    # 或 single
+```
+
+速率实验参考文件（A × B 共 1 个对比对，实际执行文字对比 47300 对、图片对比 6461 对）：
+
+|文件|A 文件（g2-1.pdf）|B 文件（g2-2.pdf）|
+|---|---|---|
+|文字段数（≥15 字）|525 段 / 22131 字|427 段 / 18390 字|
+|图片数量|72 图|92 图|
+|总页数|95 页|92 页|
+|总大小|19.99MB|14.84MB|
 
 ## 🧬 对比过程
 
 - 将 pdf 进行缓存
-- 将 pdf 进行解析，解析为：拆分的文字段落、图片、属性。解析期间将所有图片提取、缓存
+- 将 pdf 进行解析，解析为：拆分的文字段落、图片（同时预计算感知哈希）、属性。解析期间将所有图片提取、缓存
 - 将解析结果进行缓存
 - 计算 pdf 两两交叉数组，准备用来检测
-- 按组进行对比：
+- 按组进行对比（文字对比走 diff 线程池、图片对比在主线程内存计算，二者并行执行）：
   - （如果有需要排除的文字内容，则先对文字内容进行排除）
   - 文字对比，将阈值以上的结果保留（包括句长、两段文字的长度比）
-  - 图片对比，将阈值以上的结果保留（包括图片尺寸、两图片的像素数比）
+  - 图片对比，将阈值以上的结果保留（包括图片尺寸、两图片的宽高比）
   - 属性对比，将相同值的属性进行标记
-  - 得到结果数组
-- 缓存结果
-- 返回结果
+  - 得到结果并增量写入缓存
+- 返回 GROUPID，通过 `BidComparator.history(GROUPID)` 按需读取结果
 
 ## ⛓️ 功能点
 
@@ -52,7 +57,8 @@
 
 提取页内文字时，根据以下规则对文字进行分段：
 
-- 不同字体的，认为是不同的语句
+- 按字体、字号不同，认为是不同的语句
+- 按坐标重组行，按内容是否占满整行、按缩进切分段落
 - 常见标点符号（\n.!?;。！？；）分割的，认为是不同语句
 
 将解析后的文字段和页码关联存放，进行缓存
@@ -61,31 +67,34 @@
 
 > parsePDF.worker.factory.js/\_getPageImages
 
-根据 pdfjs 中识别到的对象（getOperatorList），将图片的 data 数据转换为 png 的 rgba 数据，并使用 `sharp`进行缓存
+根据 pdfjs 中识别到的对象（getOperatorList），将图片的 data 数据转换为 png 的 rgba 数据，使用 `sharp` 进行缓存。缓存的同时为每张图片预计算感知哈希（dHash）：缩放到 10×10、灰度、按均值二值化为 100 位 0/1 字符串，供对比阶段直接使用。
 
 ### 文字对比
 
-> worker/diff.worder.factory.js
+> worker/diff.worker.factory.js
 
 根据预设的规则，将文字段进行两两对比。对比时：
 
 - 移除长度过短的项
-- 跳过排除长度差距过大的项
-- 使用 `向量算法` 对比，排除不符合相似度的项
-- 符合的项使用 `diff`进行对比，并获取相似度
-- 留存符合相似度要求的项
+- 跳过长度差距过大的项（两段文字的长度比需落在阈值附近）
+- 使用 `向量算法`（字符频率向量 + 余弦相似度）粗筛，排除不符合相似度的项
+- 符合的项使用 `diff` 进行对比，并获取相似度
+- 留存符合相似度要求的项（仅达标项构造高亮串）
+
+多线程模式下由 diff 线程池并行执行（线程数默认为 CPU 核数，上限 20）：同一事件循环内提交的任务微批合并为一条消息，摊薄线程通信开销；文字段的向量带缓存，同一段文字不会重复计算。
 
 ### 图片对比
 
-> worker/sharp.worker.factory.js
+> utils/ImageComparator.js
 
-根据预设的规则，将图片进行两两对比，对比时：
+图片的感知哈希已在解析缓存时由 `sharp` 预计算（见上文），对比阶段不再解码图片，直接在内存中比较哈希字符串：
 
+- 按哈希对图片去重：页眉、logo、印章等每页重复出现的图片只对比一次，结果附带各侧出现的全部页码
 - 移除长、宽过小的图片
-- 跳过长、宽差距过大的图片
-- 使用 `sharp` 将图片进行大小调整、灰度并二值化，结果存为一个字符串
-- 使用字符串计算 `汉明距离`
-- 留存符合相似度要求的项
+- 跳过长、宽比例差距过大的图片
+- 比较两个哈希的相同位数比例（汉明距离思路），留存符合相似度要求的项
+
+由于只是百次字符比较（微秒级），图片对比在主线程执行即可，不需要 worker 线程。
 
 ### 实体提取
 
@@ -114,35 +123,15 @@
 
 ## 📖 使用方法
 
+本库为 CommonJS（`require`）导出：
+
 ```js
-import BidComparator from './index.js';
+const BidComparator = require('./index.js');
 
-// setCachePath 可设置缓存位置。默认为本库上层的 /cache 文件夹
-// BidComparator.setCachePath('path/to/cache')
+// 设置缓存位置（可选）。默认为本库上层的 /cache 文件夹
+// BidComparator.setCachePath('path/to/cache');
 
-// 实例化
-let comparator = new BidComparator();
-
-// 设置文字检查进度回调函数
-comparator.textCompareProgressHandlerFactory = function (id) {
-    return function (num, str) {
-        console.log(id, num, str);
-    };
-};
-
-// 设置图片检查进度回调函数
-comparator.imageCompareProgressHandlerFactory = function (id) {
-    return function (num, str) {
-        console.log(id, num, str);
-    };
-};
-
-// 文件属性检查较快，不用设置回调
-
-// 预处理文件，将文件缓存、解析
-BidComparator.preload('./docs/g2-3.pdf');
-
-// 更新对比设置
+// 更新对比设置（可选）
 BidComparator.updateSettings({
     text: {
         threshold: 0.8, // 相似程度阈值
@@ -152,24 +141,53 @@ BidComparator.updateSettings({
         similarity: 0.9, // 相似程度阈值
         minSize: 200, // 最小图片尺寸
     },
-    workers: 'multi', // 'single'时，为锁定单线程检测
+    workers: 'multi', // 'single' 时为单线程对比，默认 'multi'
 });
 
-// 进行对比
-comparator
-    .processFiles(
-        [
-            './docs/g2-1.pdf',
-            './docs/g2-2.pdf',
-            './docs/g2-3.pdf',
-        ]
-        './docs/g2-exclude.pdf' // 需要排除的文字内容
-    )
-    .then((res) => {
-        // 全部解析完成的回调
-        console.log(res);
-    });
+// 解析进度回调（可选）
+BidComparator.setPreloadProgressHandler((filePath, num, str) => {
+    console.log('解析进度', filePath, num, str);
+});
+
+(async () => {
+    // 预处理文件（可选）：提前解析并缓存，后续对比直接命中缓存
+    await BidComparator.preload('./docs/g2-3.pdf');
+
+    // 实例化
+    const comparator = new BidComparator();
+
+    // 文字对比进度回调（可选）
+    comparator.textCompareProgressHandlerFactory = function (id) {
+        return function (num, str) {
+            console.log('文字对比', id, num, str);
+        };
+    };
+
+    // 图片对比进度回调（可选）
+    comparator.imageCompareProgressHandlerFactory = function (id) {
+        return function (num, str) {
+            console.log('图片对比', id, num, str);
+        };
+    };
+
+    // 文件属性检查较快，不用设置回调
+
+    // 进行对比。返回 GROUPID 而非结果数组，结果增量写入缓存
+    const groupId = await comparator.processFiles(
+        ['./docs/g2-1.pdf', './docs/g2-2.pdf', './docs/g2-3.pdf'],
+        './docs/g2-exclude.pdf' // 需要排除的文字内容（可选）
+    );
+
+    // 按 GROUPID 读取结果
+    const results = await BidComparator.history(groupId);
+
+    console.log(results);
+})();
 ```
+
+## 🌐 HTTP 服务
+
+[server/](./server) 目录提供将本库封装为 HTTP 服务的版本：Fastify + 内存任务队列 + SSE 进度推送，支持文件上传与服务器本地路径两种提交方式，结果持久化在缓存目录、服务重启后仍可查询。用法与 API 文档见 [server/README.md](./server/README.md)。
 
 ## ⚠️ 注意
 
@@ -178,4 +196,4 @@ comparator
   2. 先忽略执行脚本并安装 `npm i nodejieba@2.6.0 --save --ignore-scripts`
   3. 将 `backup/StringUtil.hpp` 内容替换到 `node_modules/nodejieba/deps/limonp/StringUtil.hpp`
   4. 进入 `node_modules/nodejieba` 运行 `npm run install`
-     参考：https://travisbikkle.github.io/zh-hant/2024/07/chinese-search/
+     参考：<https://travisbikkle.github.io/zh-hant/2024/07/chinese-search/>
