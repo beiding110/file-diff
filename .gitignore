@@ -3,3 +3,5 @@ docs
 old
 cache
 dist
+# 词典修正管线的工作目录（下载的数据源与中间产物）
+.dictwork/
