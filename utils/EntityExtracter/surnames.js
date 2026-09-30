@@ -408,10 +408,51 @@ const surnames = [
     '益',
     '桓',
     '公',
+    '闫',
+    '涂',
+    '代',
+    '覃',
+    '佘',
+    '隋',
+    '芦',
+    '羡',
 ];
 
-const str = surnames.join('|');
+// 常见复姓：三、四字汉名的结构支撑（「欧阳建国」「司马南」）
+const compoundSurnames = [
+    '欧阳',
+    '司马',
+    '上官',
+    '诸葛',
+    '司徒',
+    '公孙',
+    '慕容',
+    '宇文',
+    '长孙',
+    '令狐',
+    '尉迟',
+    '东方',
+    '西门',
+    '南宫',
+    '独孤',
+    '轩辕',
+    '呼延',
+    '端木',
+    '申屠',
+    '澹台',
+    '皇甫',
+    '仲孙',
+    '闻人',
+    '百里',
+    '赫连',
+    '鲜于',
+    '公冶',
+    '太叔',
+    '东郭',
+    '第五',
+];
 
-const reg = new RegExp(`^(${str})`);
-
-module.exports = reg;
+module.exports = {
+    single: new Set(surnames),
+    compound: new Set(compoundSurnames),
+};

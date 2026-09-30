@@ -7,21 +7,23 @@
 module.exports = function (entities, keys = ['entity', 'type']) {
     const res = [];
 
-    entities.forEach((entity) => {
-        const index = res.findIndex((item) => {
-            return keys.every((key) => {
-                return item[key] === entity[key];
-            });
-        });
+    const indexOfKeys = new Map(); // keys 拼接值 -> res 下标
 
-        if (index > -1) {
+    entities.forEach((entity) => {
+        const key = keys.map((k) => entity[k]).join('\0');
+
+        if (indexOfKeys.has(key)) {
             // 存在
+            const index = indexOfKeys.get(key);
+
             res[index].num = res[index].num || 1;
 
             const entityNum = entity.num || 1;
 
             res[index].num += entityNum;
         } else {
+            indexOfKeys.set(key, res.length);
+
             res.push(entity);
         }
     });
