@@ -1,42 +1,25 @@
 const { v4: uuidv4 } = require('uuid');
 
-const {
-    parsePDF: parsePDF0,
-    setCachePath: setCachePath0,
-    setCustomLogHandler: setCustomLogHandler0,
-    setProgressHandler: setProgressHandler0,
-} = require('./worker/parsePDF.worker.0.js');
-const {
-    parsePDF: parsePDF1,
-    setCachePath: setCachePath1,
-    setCustomLogHandler: setCustomLogHandler1,
-    setProgressHandler: setProgressHandler1,
-} = require('./worker/parsePDF.worker.1.js');
-const {
-    parsePDF: parsePDF2,
-    setCachePath: setCachePath2,
-    setCustomLogHandler: setCustomLogHandler2,
-    setProgressHandler: setProgressHandler2,
-} = require('./worker/parsePDF.worker.2.js');
-const {
-    parsePDF: parsePDF3,
-    setCachePath: setCachePath3,
-    setCustomLogHandler: setCustomLogHandler3,
-    setProgressHandler: setProgressHandler3,
-} = require('./worker/parsePDF.worker.3.js');
+// 每个 factory 在主线程执行返回任务 API 对象（parseShard / extractEntities 等），
+// 注册整个对象而非解构出的单个方法——池子靠对象上的 onDead/terminate 管理线程死活
+const pdfWorkers = [
+    require('./worker/parsePDF.worker.0.js'),
+    require('./worker/parsePDF.worker.1.js'),
+    require('./worker/parsePDF.worker.2.js'),
+    require('./worker/parsePDF.worker.3.js'),
+];
 
 const TextComparator = require('./utils/TextComparator.js');
 const ImageComparator = require('./utils/ImageComparator.js');
 const CacheFile = require('./utils/CacheFile.js');
 const WorkerMultiThreading = require('./utils/WorkerMultiThreading.js');
+// 单文件解析编排（hash → 分片并行 → 合并 → 实体 → 写缓存），preload/across/processFiles 共用
+const parseFile = require('./utils/parsePipeline.js');
 const { log, setCustomHandler } = require('./utils/log.js');
 
 const workerMultiThreading = new WorkerMultiThreading();
 
-workerMultiThreading.register(parsePDF0);
-workerMultiThreading.register(parsePDF1);
-workerMultiThreading.register(parsePDF2);
-workerMultiThreading.register(parsePDF3);
+pdfWorkers.forEach((pdfWorker) => workerMultiThreading.register(pdfWorker));
 
 class BidComparator {
     constructor() {
@@ -50,7 +33,7 @@ class BidComparator {
     }
 
     static preload(file) {
-        return workerMultiThreading.handle(file);
+        return parseFile(file, workerMultiThreading);
     }
 
     static async history(file) {
@@ -60,8 +43,8 @@ class BidComparator {
     async across(bidFiles) {
         const bidDocs = await Promise.all(
             bidFiles.map(async (file) => {
-                return await workerMultiThreading.handle(file);
-            })
+                return await parseFile(file, workerMultiThreading);
+            }),
         );
 
         // 暂存 worker 返回的完整解析结果，processFiles 直接复用，
@@ -106,7 +89,7 @@ class BidComparator {
         let biddingDoc = null;
 
         if (biddingFile) {
-            biddingDoc = await workerMultiThreading.handle(biddingFile);
+            biddingDoc = await parseFile(biddingFile, workerMultiThreading);
         }
 
         this.textComparator = new TextComparator(biddingDoc, _STORE_SETTINGS_TEXT);
@@ -245,7 +228,7 @@ class BidComparator {
 
             // 批次之间稍作等待，让 GC 有机会回收内存
             if (batchEnd < this.bidDocsMatrix.length) {
-                await new Promise(resolve => setImmediate(resolve));
+                await new Promise((resolve) => setImmediate(resolve));
                 if (global.gc) {
                     global.gc();
                 }
@@ -345,10 +328,7 @@ class BidComparator {
     static setCachePath(path) {
         CacheFile.setCachePath(path);
 
-        setCachePath0(path);
-        setCachePath1(path);
-        setCachePath2(path);
-        setCachePath3(path);
+        pdfWorkers.forEach((pdfWorker) => pdfWorker.setCachePath(path));
     }
 
     // 释放全部线程资源（PDF 解析池 + 文字对比池）。
@@ -364,18 +344,12 @@ class BidComparator {
         setCustomHandler(handler);
 
         if (path) {
-            setCustomLogHandler0({ path, funName });
-            setCustomLogHandler1({ path, funName });
-            setCustomLogHandler2({ path, funName });
-            setCustomLogHandler3({ path, funName });
+            pdfWorkers.forEach((pdfWorker) => pdfWorker.setCustomLogHandler({ path, funName }));
         }
     }
 
     static setPreloadProgressHandler(handler) {
-        setProgressHandler0(handler);
-        setProgressHandler1(handler);
-        setProgressHandler2(handler);
-        setProgressHandler3(handler);
+        pdfWorkers.forEach((pdfWorker) => pdfWorker.setProgressHandler(handler));
     }
 
     static updateSettings({ text, image, workers = 'multi' }) {

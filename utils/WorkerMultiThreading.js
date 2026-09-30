@@ -21,6 +21,9 @@ class WorkerMultiThreading {
     // 大幅减少消息往返；计算密集的 diff worker 使用较大值
     static DEFAULT_MAX_CONCURRENT = 1;
 
+    // 注册一个 worker。worker 可以是任务函数（handle 不带方法名时直接调用它），
+    // 也可以是带多个任务方法的 API 对象（handle 时用第二个参数指定方法名）；
+    // 两种形态都可用 onDead/terminate 方法（若存在）通知线程死活与终止线程
     register(worker, { maxConcurrent = 1 } = {}) {
         const workerItem = {
             id: uuidv4(),
@@ -40,6 +43,11 @@ class WorkerMultiThreading {
         }
 
         return workerItem;
+    }
+
+    // 存活的 worker 数量：分片解析等调用方据此决定并行度
+    get aliveCount() {
+        return this.worker.filter((w) => !w.dead).length;
     }
 
     // 保留 num 个 worker，其余注销并终止线程
@@ -81,7 +89,14 @@ class WorkerMultiThreading {
         });
     }
 
-    handle(task) {
+    /**
+     * 提交任务到队列。
+     * @param {*} task 任务参数（原样传给 worker）
+     * @param {String} [method] worker 为 API 对象时的任务方法名（如
+     *   'parseShard'/'extractEntities'）；省略时 worker 按任务函数调用
+     * @returns {Promise} 任务结果
+     */
+    handle(task, method) {
         if (this.closed) {
             return Promise.reject(new Error('thread pool has been closed'));
         }
@@ -90,6 +105,7 @@ class WorkerMultiThreading {
             const taskItem = {
                 id: uuidv4(),
                 task,
+                method,
                 success: resolve,
                 error: reject,
             };
@@ -155,7 +171,10 @@ class WorkerMultiThreading {
 
             candidate.inflight++;
 
-            candidate.worker(headWaiting.task)
+            // 指定了方法名的任务调用 API 对象上的对应方法，否则 worker 本身即任务函数
+            const invoke = headWaiting.method ? candidate.worker[headWaiting.method] : candidate.worker;
+
+            Promise.resolve(invoke(headWaiting.task))
                 .then((result) => {
                     headWaiting.success(result);
                 })
