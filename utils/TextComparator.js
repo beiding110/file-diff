@@ -98,9 +98,20 @@ class TextComparator {
         const cleanA = await this.removeBiddingContent(sentencesA);
         const cleanB = await this.removeBiddingContent(sentencesB);
 
-        const result = await this.compareTexts(cleanA, cleanB);
+        // 参与对比的文字总量（剔除招标内容后的口径），作为文件级相似度的分母
+        const sumLen = (texts) => texts.reduce((sum, textItem) => sum + textItem.text.length, 0);
 
-        return result;
+        const stats = {
+            totalLenA: sumLen(cleanA),
+            totalLenB: sumLen(cleanB),
+        };
+
+        const { similarities, matchedLenA, matchedLenB } = await this.compareTexts(cleanA, cleanB);
+
+        stats.matchedLenA = matchedLenA;
+        stats.matchedLenB = matchedLenB;
+
+        return { similarities, stats };
     }
 
     // 清除投标文件中，招标文件部分
@@ -241,7 +252,32 @@ class TextComparator {
 
         log('TextComparator.js', 'compareTexts', '对比文字完毕：', result.length);
 
-        return result;
+        // 文件级相似度聚合：一个句块可与对面多个句块达标（cross match），
+        // 直接按对求和会重复计数，按句文本去重后统计命中文字量。
+        // 结果项的 a/b 是重新构造的对象，无法用引用去重，只能按文本串
+        const matchedA = new Set();
+        const matchedB = new Set();
+
+        for (const { a, b } of result) {
+            matchedA.add(a.text);
+            matchedB.add(b.text);
+        }
+
+        const sumSetLen = (set) => {
+            let sum = 0;
+
+            for (const text of set) {
+                sum += text.length;
+            }
+
+            return sum;
+        };
+
+        return {
+            similarities: result,
+            matchedLenA: sumSetLen(matchedA),
+            matchedLenB: sumSetLen(matchedB),
+        };
     }
 }
 

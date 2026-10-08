@@ -79,6 +79,43 @@ class ImageComparator {
 
         const matches = [];
 
+        // 文件级相似度统计：参与对比的唯一图片的像素量（≥ minSize）与命中像素量，
+        // 与匹配口径一致（minSize 以下的不参与对比，也不计入分母）。
+        // 图片在文件级相似度中按体量（width × height）计权，而非按张数
+        const isEligible = (rep) => rep.width >= this.options.minSize && rep.height >= this.options.minSize;
+
+        const sumPixels = (groups, hashes) => {
+            let sum = 0;
+
+            for (const hash of hashes) {
+                const { width, height } = groups.get(hash).rep;
+
+                sum += width * height;
+            }
+
+            return sum;
+        };
+
+        const eligibleHashes = (groups) => {
+            const hashes = [];
+
+            for (const [hash, { rep }] of groups) {
+                if (isEligible(rep)) {
+                    hashes.push(hash);
+                }
+            }
+
+            return hashes;
+        };
+
+        const stats = {
+            totalPixelsA: sumPixels(groupsA, eligibleHashes(groupsA)),
+            totalPixelsB: sumPixels(groupsB, eligibleHashes(groupsB)),
+        };
+
+        const matchedA = new Set();
+        const matchedB = new Set();
+
         // 唯一哈希间的组合数即精确总数，进度无需再修正
         const progressCallback = factoryProgress(groupsA.size * groupsB.size, this.processHandler);
 
@@ -91,12 +128,7 @@ class ImageComparator {
                 const { rep: repB } = entryB;
 
                 // 图片尺寸小于最小尺寸，跳过
-                if (
-                    repA.width < this.options.minSize ||
-                    repA.height < this.options.minSize ||
-                    repB.width < this.options.minSize ||
-                    repB.height < this.options.minSize
-                ) {
+                if (!isEligible(repA) || !isEligible(repB)) {
                     continue;
                 }
 
@@ -110,6 +142,9 @@ class ImageComparator {
                 const similarity = compareHashes(hashA, hashB);
 
                 if (similarity >= this.options.similarity) {
+                    matchedA.add(hashA);
+                    matchedB.add(hashB);
+
                     matches.push({
                         images: [repA.image, repB.image],
                         pages: [repA.pageNumber, repB.pageNumber],
@@ -122,9 +157,12 @@ class ImageComparator {
             }
         }
 
+        stats.matchedPixelsA = sumPixels(groupsA, matchedA);
+        stats.matchedPixelsB = sumPixels(groupsB, matchedB);
+
         log('ImageComparator.js', 'compareImages', '对比图片结束：', matches.length);
 
-        return matches;
+        return { matches, stats };
     }
 }
 

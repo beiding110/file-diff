@@ -185,6 +185,19 @@ BidComparator.setPreloadProgressHandler((filePath, num, str) => {
 })();
 ```
 
+每对文件的对比结果中包含 `similarity` 字段，即文件级相似度（0~1）：
+
+```js
+similarity: {
+    overall: { score: 0.073, a: 0.058, b: 0.092 },    // a/b 为该文件内容在对方中重复的比例，score 为合并命中率
+    text:     { score: 0.228, a: 0.204, b: 0.256 }, // score 为 Dice 系数，a/b 为单向文字覆盖率（判断谁包含谁）
+    image:    { score: 0.073, a: 0.058, b: 0.092 },  // 同上，图片按像素体量计
+    metadata: { score: 0, same: 0, compared: 4 },    // 属性相同比例（仅统计两侧都有值的项）
+}
+```
+
+每侧的 `a`/`b` 把该文件三类内容的命中字节除以自己的总字节（文字 + 图片 + 属性），`score` 则是两文件所有字节合并后的总体命中率（Dice 系数），适合排序与阈值告警。字节换算口径：文字按字符数 × 2（UTF-16），图片按 `width × height × 4`（未压缩位图），属性按值长度 × 2。注意该口径下图片体量通常远大于文字（一张中等图片抵近百万字），含图对的分数主要由图片决定；某类内容缺失时其权重自动归零，对应分项 `score` 为 `null`。
+
 ## 🌐 HTTP 服务
 
 [server/](./server) 目录提供将本库封装为 HTTP 服务的版本：Fastify + 内存任务队列 + SSE 进度推送，支持文件上传与服务器本地路径两种提交方式，结果持久化在缓存目录、服务重启后仍可查询。用法与 API 文档见 [server/README.md](./server/README.md)。

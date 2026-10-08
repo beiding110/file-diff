@@ -246,10 +246,13 @@ class BidComparator {
 
         // 文字对比走 diff 线程池、图片对比在主线程纯内存计算，
         // 两者互不争抢资源，并行执行缩短单对耗时
-        const [textSimilarities, imageMatches] = await Promise.all([
+        const [textResult, imageResult] = await Promise.all([
             this.textComparator.findSimilarities(bidA.texts, bidB.texts),
             this.imageComparator.compareImages(bidA.images, bidB.images),
         ]);
+
+        const { similarities: textSimilarities, stats: textStats } = textResult;
+        const { matches: imageMatches, stats: imageStats } = imageResult;
 
         log('index.js', 'compareBids', '文字对比结束：', textSimilarities.length);
         log('index.js', 'compareBids', '即将开始对比图片：:', bidA.fileName, bidB.fileName);
@@ -259,6 +262,8 @@ class BidComparator {
         const metadataMatches = this.compareMetadata(bidA.metadata, bidB.metadata);
 
         log('index.js', 'compareBids', '属性对比结束');
+
+        const similarity = this.calculateSimilarity(textStats, imageStats, metadataMatches);
 
         const endTime = new Date().getTime();
 
@@ -270,6 +275,7 @@ class BidComparator {
             textSimilarities,
             imageMatches,
             metadataMatches,
+            similarity,
             starttime: startTime,
             addtime: endTime,
             duration: endTime - startTime,
@@ -283,6 +289,89 @@ class BidComparator {
                     minSize: this.imageComparator.options.minSize,
                     ratioTolerance: this.imageComparator.options.ratioTolerance,
                 },
+            },
+        };
+    }
+
+    // 文件级相似度：把文字/图片/属性统一换算为字节，按内容体量自动分配权重——
+    // 两侧各自的命中率 = 该侧命中字节 / 该侧总字节，合并值（score）为总体 Dice 系数。
+    // 哪类内容在文件对中体量大就自然主导总分，无需人工拍权重；
+    // 某类内容缺失时其字节为 0，权重自动归零（连续降权，无二元跳变）。
+    //
+    // 字节换算率（隐式决定各类内容的相对权重，需要时调整这两个系数）：
+    // - 文字：字符数 × 2（UTF-16，JS 字符串的真实内存口径）
+    // - 图片：width × height × 4（RGBA 未压缩位图，sharp 解码时的真实像素缓冲口径）
+    // - 属性：值字符串长度 × 2
+    // 注意该口径下一张中等图片即抵近百万字文字，含图对的分数主要由图片体量决定
+    calculateSimilarity(textStats, imageStats, metadataMatches) {
+        const CHAR_BYTES = 2;
+        const PIXEL_BYTES = 4;
+
+        // 属性只在两侧都有值的项上统计：双方都空缺的项不构成相似证据
+        const metaEffective = metadataMatches.filter((item) => item.a && item.b);
+
+        let totalMetaBytesA = 0;
+        let totalMetaBytesB = 0;
+        let matchedMetaBytesA = 0;
+        let matchedMetaBytesB = 0;
+
+        for (const item of metaEffective) {
+            const bytesA = String(item.a).length * CHAR_BYTES;
+            const bytesB = String(item.b).length * CHAR_BYTES;
+
+            totalMetaBytesA += bytesA;
+            totalMetaBytesB += bytesB;
+
+            if (item.same) {
+                matchedMetaBytesA += bytesA;
+                matchedMetaBytesB += bytesB;
+            }
+        }
+
+        // 两侧各自的字节构成：文字 + 图片 + 属性
+        const totalBytesA = textStats.totalLenA * CHAR_BYTES + imageStats.totalPixelsA * PIXEL_BYTES + totalMetaBytesA;
+        const totalBytesB = textStats.totalLenB * CHAR_BYTES + imageStats.totalPixelsB * PIXEL_BYTES + totalMetaBytesB;
+
+        const matchedBytesA = textStats.matchedLenA * CHAR_BYTES + imageStats.matchedPixelsA * PIXEL_BYTES + matchedMetaBytesA;
+        const matchedBytesB = textStats.matchedLenB * CHAR_BYTES + imageStats.matchedPixelsB * PIXEL_BYTES + matchedMetaBytesB;
+
+        const ratio = (matched, total) => (total > 0 ? matched / total : null);
+
+        // 分项明细：文字/图片各为 Dice 系数，附带单向覆盖率（判断重合的方向）
+        const dice = (matchedA, matchedB, totalA, totalB) => {
+            if (totalA + totalB <= 0) {
+                return null;
+            }
+
+            return (matchedA + matchedB) / (totalA + totalB);
+        };
+
+        const coverage = (matched, total) => (total > 0 ? matched / total : 0);
+
+        return {
+            // 总相似度（0~1），按三类内容的字节体量自动加权：
+            // a/b 为该文件的内容在对方文件中重复的比例，score 为两文件合并的总体命中率
+            overall: {
+                score: ratio(matchedBytesA + matchedBytesB, totalBytesA + totalBytesB) ?? 0,
+                a: ratio(matchedBytesA, totalBytesA),
+                b: ratio(matchedBytesB, totalBytesB),
+            },
+            text: {
+                score: dice(textStats.matchedLenA, textStats.matchedLenB, textStats.totalLenA, textStats.totalLenB),
+                a: textStats.totalLenA > 0 ? coverage(textStats.matchedLenA, textStats.totalLenA) : null,
+                b: textStats.totalLenB > 0 ? coverage(textStats.matchedLenB, textStats.totalLenB) : null,
+            },
+            image: {
+                score: dice(imageStats.matchedPixelsA, imageStats.matchedPixelsB, imageStats.totalPixelsA, imageStats.totalPixelsB),
+                a: imageStats.totalPixelsA > 0 ? coverage(imageStats.matchedPixelsA, imageStats.totalPixelsA) : null,
+                b: imageStats.totalPixelsB > 0 ? coverage(imageStats.matchedPixelsB, imageStats.totalPixelsB) : null,
+            },
+            metadata: {
+                score: metaEffective.length > 0
+                    ? metaEffective.filter((item) => item.same).length / metaEffective.length
+                    : null,
+                same: metaEffective.filter((item) => item.same).length,
+                compared: metaEffective.length,
             },
         };
     }
