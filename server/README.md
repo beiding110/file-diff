@@ -54,7 +54,8 @@ set LIB_ENTRY=E:\Git\file-diff\dist\BidComparator.js && npm start
 
 - `bidFiles`：投标 PDF 文件，字段重复多次，至少 2 个
 - `biddingFile`：招标 PDF 文件，可选
-- `settings`：可选，JSON 字符串，如 `{"text":{"threshold":0.8,"minLength":15},"image":{"similarity":0.9,"minSize":300}}`
+- `settings`：可选，JSON 字符串，如 `{"text":{"threshold":0.8,"minLength":15,"excludeToc":true},"image":{"similarity":0.9,"minSize":300}}`
+  - `text.excludeToc`：是否排除目录点线行（`标题............12` 这类排版元素），默认 `true`；设 `false` 时目录行参与文字对比
 
 ```bash
 curl -X POST http://localhost:3000/api/compare \

@@ -1,6 +1,7 @@
 const path = require('path');
 const CacheFile = require('./CacheFile.js');
 const parseResources = require('./parseResources.js');
+const { isTocLine } = require('./tocLineFilter.js');
 
 /**
  * 单文件解析编排（主线程）：hash 预检缓存 → 副本复制与分片解析并行 →
@@ -56,9 +57,11 @@ async function parseFile(file, workerPool) {
     //    分片各只有 1/N 页，片内各自提取会让频次退化为分片级而漂移，
     //    全量文本只在主线程合并（Promise.all）后才存在；
     // ② jieba 词典只在解析 worker 加载（主线程不引入），不能就地在主线程跑。
-    // 传输纯文本数组（extractMany 的块级语义与串行形态一致）
+    // 传输纯文本数组（extractMany 的块级语义与串行形态一致）。
+    // 目录点线行无条件不进实体语料：实体提取的目标是正文实体，目录行只是
+    // 章节标题的重复（与对比设置 excludeToc 解耦——texts 本身保留目录行）
     const entities = await workerPool.handle(
-        texts.map(({ text }) => text),
+        texts.map(({ text }) => text).filter((text) => !isTocLine(text)),
         'extractEntities',
     );
 

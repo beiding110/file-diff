@@ -58,7 +58,7 @@ const CONFIG = {
     maxFinishedTasks: Math.max(10, intEnv('MAX_FINISHED_TASKS', 200)),
     // 内存中保留的终态任务元数据条数上限
     defaultSettings: {
-        text: { threshold: 0.8, minLength: 15 },
+        text: { threshold: 0.8, minLength: 15, excludeToc: true },
         image: { similarity: 0.9, minSize: 300 },
     },
 };

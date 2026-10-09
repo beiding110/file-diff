@@ -283,6 +283,7 @@ class BidComparator {
                 text: {
                     threshold: this.textComparator.options.threshold,
                     minLength: this.textComparator.options.minLength,
+                    excludeToc: this.textComparator.options.excludeToc,
                 },
                 image: {
                     similarity: this.imageComparator.options.similarity,
@@ -332,8 +333,10 @@ class BidComparator {
         const totalBytesA = textStats.totalLenA * CHAR_BYTES + imageStats.totalPixelsA * PIXEL_BYTES + totalMetaBytesA;
         const totalBytesB = textStats.totalLenB * CHAR_BYTES + imageStats.totalPixelsB * PIXEL_BYTES + totalMetaBytesB;
 
-        const matchedBytesA = textStats.matchedLenA * CHAR_BYTES + imageStats.matchedPixelsA * PIXEL_BYTES + matchedMetaBytesA;
-        const matchedBytesB = textStats.matchedLenB * CHAR_BYTES + imageStats.matchedPixelsB * PIXEL_BYTES + matchedMetaBytesB;
+        const matchedBytesA =
+            textStats.matchedLenA * CHAR_BYTES + imageStats.matchedPixelsA * PIXEL_BYTES + matchedMetaBytesA;
+        const matchedBytesB =
+            textStats.matchedLenB * CHAR_BYTES + imageStats.matchedPixelsB * PIXEL_BYTES + matchedMetaBytesB;
 
         const ratio = (matched, total) => (total > 0 ? matched / total : null);
 
@@ -362,14 +365,20 @@ class BidComparator {
                 b: textStats.totalLenB > 0 ? coverage(textStats.matchedLenB, textStats.totalLenB) : null,
             },
             image: {
-                score: dice(imageStats.matchedPixelsA, imageStats.matchedPixelsB, imageStats.totalPixelsA, imageStats.totalPixelsB),
+                score: dice(
+                    imageStats.matchedPixelsA,
+                    imageStats.matchedPixelsB,
+                    imageStats.totalPixelsA,
+                    imageStats.totalPixelsB,
+                ),
                 a: imageStats.totalPixelsA > 0 ? coverage(imageStats.matchedPixelsA, imageStats.totalPixelsA) : null,
                 b: imageStats.totalPixelsB > 0 ? coverage(imageStats.matchedPixelsB, imageStats.totalPixelsB) : null,
             },
             metadata: {
-                score: metaEffective.length > 0
-                    ? metaEffective.filter((item) => item.same).length / metaEffective.length
-                    : null,
+                score:
+                    metaEffective.length > 0
+                        ? metaEffective.filter((item) => item.same).length / metaEffective.length
+                        : null,
                 same: metaEffective.filter((item) => item.same).length,
                 compared: metaEffective.length,
             },
@@ -443,7 +452,7 @@ class BidComparator {
 
     static updateSettings({ text, image, workers = 'multi' }) {
         if (text) {
-            const { threshold, minLength } = text;
+            const { threshold, minLength, excludeToc } = text;
 
             if (threshold) {
                 _STORE_SETTINGS_TEXT.threshold = threshold;
@@ -451,6 +460,11 @@ class BidComparator {
 
             if (minLength) {
                 _STORE_SETTINGS_TEXT.minLength = minLength;
+            }
+
+            // boolean 参数：显式类型判断，false 也是合法配置不能被真值判断跳过
+            if (typeof excludeToc === 'boolean') {
+                _STORE_SETTINGS_TEXT.excludeToc = excludeToc;
             }
         }
 

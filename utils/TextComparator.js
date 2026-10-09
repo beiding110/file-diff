@@ -22,6 +22,7 @@ const { diffWords: diffWords19 } = require('../worker/diff.worker.19.js');
 const factoryProgress = require('./factoryProgress.js');
 const WorkerMultiThreading = require('./WorkerMultiThreading.js');
 const smartChunkProcessor = require('./SmartChunkProcessor.js');
+const { isTocLine } = require('./tocLineFilter.js');
 const { log } = require('./log.js');
 
 const os = require('os');
@@ -70,6 +71,9 @@ class TextComparator {
         this.options = {
             threshold: 0.7,
             minLength: 10,
+            // 是否排除目录点线行（"标题............12"）：排版元素而非正文，
+            // 默认剔除以免两份文件的目录结构相似被误报为正文重复
+            excludeToc: true,
             ...options,
         };
 
@@ -87,13 +91,22 @@ class TextComparator {
     }
 
     async findSimilarities(textsA, textsB) {
-        const sentencesA = textsA.filter((textItem) => {
-            return textItem.text.length >= this.options.minLength;
-        });
+        // 目录点线行剔除与 minLength 同级：既不参与对比（不产生噪音命中），
+        // 也不进 totalLen 统计口径。解析缓存忠实于 PDF 原文（目录行保留在
+        // texts 中），排除与否只在此处按设置裁剪，切换设置不依赖重新解析
+        const { excludeToc } = this.options;
 
-        const sentencesB = textsB.filter((textItem) => {
-            return textItem.text.length >= this.options.minLength;
-        });
+        const isComparable = (textItem) => {
+            if (textItem.text.length < this.options.minLength) {
+                return false;
+            }
+
+            return !(excludeToc && isTocLine(textItem.text));
+        };
+
+        const sentencesA = textsA.filter(isComparable);
+
+        const sentencesB = textsB.filter(isComparable);
 
         const cleanA = await this.removeBiddingContent(sentencesA);
         const cleanB = await this.removeBiddingContent(sentencesB);
