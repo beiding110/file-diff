@@ -108,8 +108,30 @@ class TextComparator {
 
         const sentencesB = textsB.filter(isComparable);
 
-        const cleanA = await this.removeBiddingContent(sentencesA);
-        const cleanB = await this.removeBiddingContent(sentencesB);
+        // 排除阶段对 A、B 各跑一轮：两轮独立计数时，第二轮的 num 会从 0
+        // 重计，阶段进度出现回跳（先涨满再跌回起点）。按各轮任务量占比把
+        // 局部进度映射到整体区间拼接（A 轮 [0, wA]、B 轮 [wA, 1]），
+        // 两轮合计单调递增收敛到 1。str/remain 透传各轮自身口径
+        // （remain 为本轮剩余估算）。不能改为两轮共用一个 factoryProgress：
+        // processDoubleLoop 会按本轮实际任务数 setTotal 收口，共享实例的
+        // total 会被第一轮改小，第二轮累计计数将超出 1
+        const biddingTexts = this.biddingContent ? this.biddingContent.texts : [];
+
+        const removeTotalA = sentencesA.length * biddingTexts.length;
+        const removeTotalB = sentencesB.length * biddingTexts.length;
+        const removeTotalAll = removeTotalA + removeTotalB;
+
+        const weightA = removeTotalAll > 0 ? removeTotalA / removeTotalAll : 0;
+        const weightB = removeTotalAll > 0 ? removeTotalB / removeTotalAll : 0;
+
+        const scopedRemoveProgress = (offset, weight) => (num, str, remain) => {
+            if (this.removeProgressHandler) {
+                this.removeProgressHandler((offset + weight * Number(num)).toFixed(4), str, remain);
+            }
+        };
+
+        const cleanA = await this.removeBiddingContent(sentencesA, scopedRemoveProgress(0, weightA));
+        const cleanB = await this.removeBiddingContent(sentencesB, scopedRemoveProgress(weightA, weightB));
 
         // 参与对比的文字总量（剔除招标内容后的口径），作为文件级相似度的分母
         const sumLen = (texts) => texts.reduce((sum, textItem) => sum + textItem.text.length, 0);

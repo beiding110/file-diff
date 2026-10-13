@@ -244,12 +244,14 @@ class BidComparator {
 
         log('index.js', 'compareBids', '即将开始对比文字:', bidA.fileName, bidB.fileName);
 
-        // 文字对比走 diff 线程池、图片对比在主线程纯内存计算，
-        // 两者互不争抢资源，并行执行缩短单对耗时
-        const [textResult, imageResult] = await Promise.all([
-            this.textComparator.findSimilarities(bidA.texts, bidB.texts),
-            this.imageComparator.compareImages(bidA.images, bidB.images),
-        ]);
+        // 文字对比走 diff 线程池、图片对比在主线程纯内存计算。图片对比虽快，
+        // 但不能与文字并行：① 它是同步计算，执行时占住主线程，文字 diff 的
+        // 进度事件反而推不动，"并行"并无实际提速；② 整体进度按
+        // "排除文字→文字对比→图片对比"分段递增（0-30/30-70/70-100），
+        // 并行时图片的进度事件先于文字到达，随后被文字进度覆盖回去，
+        // 整体进度最终卡在 70 而非收敛到 100
+        const textResult = await this.textComparator.findSimilarities(bidA.texts, bidB.texts);
+        const imageResult = await this.imageComparator.compareImages(bidA.images, bidB.images);
 
         const { similarities: textSimilarities, stats: textStats } = textResult;
         const { matches: imageMatches, stats: imageStats } = imageResult;

@@ -35,7 +35,7 @@ node test/test_speed.js multi    # 或 single
 - 将 pdf 进行解析，解析为：拆分的文字段落、图片（同时预计算感知哈希）、属性。解析期间将所有图片提取、缓存
 - 将解析结果进行缓存
 - 计算 pdf 两两交叉数组，准备用来检测
-- 按组进行对比（文字对比走 diff 线程池、图片对比在主线程内存计算，二者并行执行）：
+- 按组进行对比（文字对比走 diff 线程池、图片对比在主线程内存计算，二者先后串行执行——图片对比是同步计算，执行时占住主线程，与文字并行并不提速）：
   - （如果有需要排除的文字内容，则先对文字内容进行排除）
   - 文字对比，将阈值以上的结果保留（包括句长、两段文字的长度比）
   - 图片对比，将阈值以上的结果保留（包括图片尺寸、两图片的宽高比）
@@ -159,6 +159,15 @@ BidComparator.setPreloadProgressHandler(({ filePath, progress, remain }) => {
 
     // 实例化
     const comparator = new BidComparator();
+
+    // 排除招标内容进度回调（可选，传入排除文件后此阶段才会实际执行）
+    // num 为排除阶段整体进度 0~1：A、B 两轮按各自任务量占比映射拼接，全程单调递增；
+    // str/remain 为当前轮自身口径（remain 是本轮剩余时间估算）
+    comparator.textCompareRemoveProgressHandlerFactory = function (id) {
+        return function (num, str, remain) {
+            console.log('内容排除', id, num, str, remain);
+        };
+    };
 
     // 文字对比进度回调（可选）
     comparator.textCompareProgressHandlerFactory = function (id) {
