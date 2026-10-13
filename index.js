@@ -447,7 +447,14 @@ class BidComparator {
     }
 
     static setPreloadProgressHandler(handler) {
-        pdfWorkers.forEach((pdfWorker) => pdfWorker.setProgressHandler(handler));
+        // 分片事件先按文件聚合（全局进度/剩余时间单个分片算不了），
+        // 明细与聚合值一并外发——类库对外输出完整可用的进度信息，
+        // 外层直接消费无需再算
+        pdfWorkers.forEach((pdfWorker) =>
+            pdfWorker.setProgressHandler((info) => {
+                handler(parseFile.aggregateShardProgress(info));
+            }),
+        );
     }
 
     static updateSettings({ text, image, workers = 'multi' }) {

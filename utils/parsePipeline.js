@@ -3,6 +3,73 @@ const CacheFile = require('./CacheFile.js');
 const parseResources = require('./parseResources.js');
 const { isTocLine } = require('./tocLineFilter.js');
 
+// ---- 分片进度聚合 ----
+// worker 侧只上报片内事实（shard/done/shards/numPages），文件级的聚合值
+// （全局已完成页数、进度、剩余时间）单个分片算不了——各片并行、互不知晓，
+// 只有主线程能看到全部分片的事件流，因此在这里汇总后随明细一并发给外层，
+// 类库对外即输出完整可用的进度信息：明细供分片粒度的可视化（如散点图），
+// 聚合值供直接展示，外层无需再做任何计算。
+// 状态按 filePath 分组，多文件并行解析互不干扰；每次 parseFile 开始时重置，
+// 同一文件再次冷解析不会带上上次的计数
+const _shardProgress = new Map(); // filePath -> { doneByShard: Map<shard, done>, numPages, startTime }
+
+function resetShardProgress(filePath) {
+    _shardProgress.delete(filePath);
+}
+
+/**
+ * 汇总单条分片进度，输出带聚合值的完整进度事件
+ * @param {Object} info worker 上报的片内事实 { filePath, shard, shards, done, numPages }
+ * @returns {Object} 对外进度事件：明细原样透传，外加聚合值 doneAll/progress/remain
+ */
+function aggregateShardProgress({ filePath, shard, shards, done, numPages }) {
+    let state = _shardProgress.get(filePath);
+
+    if (!state) {
+        state = { doneByShard: new Map(), numPages, startTime: Date.now() };
+        _shardProgress.set(filePath, state);
+    }
+
+    // 分片上报的是片内累计值而非增量，覆盖写即最新计数
+    state.doneByShard.set(shard, done);
+
+    const doneAll = [...state.doneByShard.values()].reduce((sum, n) => sum + n, 0);
+
+    // 剩余时间估算：均摊每页耗时 × 剩余页数，基于聚合后的总完成数——
+    // 分片速度不均时不会被最快的片带偏
+    const elapsed = Date.now() - state.startTime;
+    const remainMs = doneAll > 0 ? Math.round((elapsed / doneAll) * (numPages - doneAll)) : 0;
+
+    return {
+        // 明细（页码字段省略：该片处理的页码序列可由 shard+shards 推导）
+        filePath,
+        shard,
+        shards,
+        done,
+        numPages,
+        // 聚合值
+        doneAll, // 全局累计已完成页数
+        progress: numPages > 0 ? (doneAll / numPages).toFixed(4) : 1, // 全局进度（4 位小数）
+        remain: _formatRemain(remainMs), // 全局剩余时间估算
+    };
+}
+
+// 毫秒格式化为剩余时间文本
+function _formatRemain(ms) {
+    if (!ms || ms <= 0) {
+        return '0秒';
+    }
+
+    const seconds = Math.ceil(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+
+    if (minutes > 0) {
+        return `${minutes}分${seconds % 60}秒`;
+    }
+
+    return `${seconds}秒`;
+}
+
 /**
  * 单文件解析编排（主线程）：hash 预检缓存 → 副本复制与分片解析并行 →
  * 按页序合并 → 实体提取 → 写解析缓存。
@@ -21,6 +88,9 @@ const { isTocLine } = require('./tocLineFilter.js');
  * @param {Object} workerPool 解析 worker 线程池（WorkerMultiThreading 实例）
  */
 async function parseFile(file, workerPool) {
+    // 重置该文件的分片进度聚合状态（防同文件二次冷解析残留旧计数）
+    resetShardProgress(file);
+
     // 主线程流式 hash 一次，分片 worker 直接复用（不再各自重复计算）
     const cacheFile = new CacheFile();
 
@@ -81,3 +151,4 @@ async function parseFile(file, workerPool) {
 }
 
 module.exports = parseFile;
+module.exports.aggregateShardProgress = aggregateShardProgress;

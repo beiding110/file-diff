@@ -181,38 +181,43 @@ module.exports = function (thisFileName) {
                 pendingImageBytes = 0;
             };
 
-            // 片内进度按全局页号上报：片内第 n 个处理页的页码是 shard+1+n*shards，
-            // 多片进度流近似拼出全文档进度（1s 节流，与 factoryProgress 一致）
-            const startTime = Date.now();
+            // 片内进度只上报片内事实（不拼全局页码与剩余时间）：
+            // 取模分片下各片页码（1,5,9… / 2,6,10…）交错到达会让 UI 页码
+            // 乱跳，全局进度与剩余时间由类库主线程按文件聚合
+            // （parsePipeline.aggregateShardProgress）随明细一并发给外层。
+            // 不带页码字段：该片处理的页码序列可由 shard+shards 推导。
+            // 1s 节流减少跨线程消息，本片最后一页强制上报保证聚合收敛到满页数
             let done = 0;
             let lastPost = 0;
 
             const postProgress = (pageNumber) => {
                 done++;
 
-                const now = Date.now();
+                const isShardLastPage = pageNumber + shards > pdf.numPages;
 
-                if (pageNumber !== pdf.numPages && now - lastPost < 1000) {
+                if (!isShardLastPage && Date.now() - lastPost < 1000) {
                     return;
                 }
 
-                lastPost = now;
+                lastPost = Date.now();
 
-                // 剩余时间粗估：片内每页耗时 × 本片剩余页数（各片同速并行，全局近似）
-                const remainPages = Math.ceil((pdf.numPages - pageNumber) / shards);
-                const remainMs = done > 0 ? Math.round(((now - startTime) / done) * remainPages) : 0;
-
-                eventCetner.post(
-                    'progress',
+                eventCetner.post('progress', {
                     filePath,
-                    (pageNumber / pdf.numPages).toFixed(4),
-                    `${pageNumber} / ${pdf.numPages}`,
-                    _formatRemain(remainMs),
-                );
+                    shard,
+                    shards,
+                    done, // 本片累计已完成页数
+                    numPages: pdf.numPages,
+                });
             };
 
             if (!pdf.numPages) {
-                eventCetner.post('progress', filePath, 1, '0 / 0', '0');
+                eventCetner.post('progress', {
+                    filePath,
+                    shard,
+                    shards,
+                    done: 0,
+                    numPages: 0,
+                });
             }
 
             const shardPages = pdf.numPages ? Math.floor((pdf.numPages - shard - 1) / shards) + 1 : 0;
@@ -310,22 +315,6 @@ module.exports = function (thisFileName) {
 
             setCustomHandler(fun);
         });
-
-        // 毫秒格式化为剩余时间文本（分片进度上报用）
-        function _formatRemain(ms) {
-            if (!ms || ms <= 0) {
-                return '0秒';
-            }
-
-            const seconds = Math.ceil(ms / 1000);
-            const minutes = Math.floor(seconds / 60);
-
-            if (minutes > 0) {
-                return `${minutes}分${seconds % 60}秒`;
-            }
-
-            return `${seconds}秒`;
-        }
 
         return null;
     }
