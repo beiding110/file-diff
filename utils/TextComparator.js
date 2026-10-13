@@ -200,7 +200,8 @@ class TextComparator {
                 }));
         };
 
-        // 使用 texts.length * biddingTexts.length 作为粗略估计用于进度显示
+        // 进度分母先用全组合粗估构造（精确总数要等预统计后才能得知），
+        // processDoubleLoop 预统计出剪枝后的精确数后会校准
         const estimatedTotal = texts.length * biddingTexts.length;
 
         // 构建进度回调（直接使用用户回调，避免 factoryProgress 嵌套导致计数错乱）
@@ -210,7 +211,6 @@ class TextComparator {
         await smartChunkProcessor.processDoubleLoop(texts, biddingTexts, taskCreator, filterFn, {
             chunkSize: 500,
             onProgress: progressCallback,
-            estimatedTotal: estimatedTotal,
             onResult: ({ itemA, similarity }) => {
                 // 与任一招标文本相似度达到阈值，即认为属于招标文件内容
                 if (similarity >= this.options.threshold) {
@@ -272,7 +272,7 @@ class TextComparator {
                 });
         };
 
-        // 移除预先统计：使用粗略估计
+        // 进度分母先用全组合粗估构造，processDoubleLoop 预统计后校准
         const estimatedTotal = sentencesA.length * sentencesB.length;
 
         // 构建进度回调
@@ -282,7 +282,6 @@ class TextComparator {
         const result = await smartChunkProcessor.processDoubleLoop(sentencesA, sentencesB, taskCreator, filterFn, {
             chunkSize: 200,
             onProgress: progressCallback,
-            estimatedTotal: estimatedTotal,
         });
 
         log('TextComparator.js', 'compareTexts', '对比文字完毕：', result.length);

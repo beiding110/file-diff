@@ -46,7 +46,8 @@ module.exports = function factoryProgress(total, cb) {
             if (Number(percentage) === 1) {
                 cb && cb(percentage, `${current} / ${total}`, '0');
             } else if (now - lastTime >= 500) { // 缩短最小更新间隔
-                let timeRemaining = calcDifference(Math.round(((now - startTime) / current) * (total - current)));
+                // current 为 0 时均摊除零得 Infinity（如预统计校准在首个任务前触发），显示占位符
+                let timeRemaining = current > 0 ? calcDifference(Math.round(((now - startTime) / current) * (total - current))) : '-';
                 lastTime = now;
                 cb && cb(percentage, `${current} / ${total}`, timeRemaining);
             }

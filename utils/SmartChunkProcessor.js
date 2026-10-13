@@ -56,38 +56,49 @@ class SmartChunkProcessor {
      * @param {Function} filterFn - 过滤函数 (itemA, itemB) => boolean，返回 false 则跳过该对
      * @param {Object} options - 配置选项
      * @param {number} options.chunkSize - 每批处理的任务数
-     * @param {Function} options.onProgress - 进度回调函数（无参数，每次任务完成后调用）
+     * @param {Function} options.onProgress - 进度回调函数（无参数，每次任务完成后调用；带 setTotal 时会先被校准为预统计的精确总数）
      * @param {Function} options.onResult - 结果回调函数 (result) => Promise|void，每个结果产生时立即调用
-     * @param {number} options.estimatedTotal - 预估任务总数（用于 factoryProgress），不传则使用 arrayA.length * arrayB.length
-     * @param {boolean} options.autoAdjustTotal - 是否自动修正预估总数（默认 true）
      * @returns {Promise<Array>} 当 onResult 为空时返回所有结果，否则返回空数组
      */
     async processDoubleLoop(arrayA, arrayB, taskCreator, filterFn = null, options = {}) {
         const {
             chunkSize = 1000,
             onProgress = null,
-            onResult = null,
-            estimatedTotal = null,
-            autoAdjustTotal = true
+            onResult = null
         } = options;
 
-        // 使用预估总数或粗略估计，避免预先统计的双重循环
-        const totalTasks = estimatedTotal !== null ? estimatedTotal : arrayA.length * arrayB.length;
+        // 预统计精确任务总数：filterFn 是纯内存判断，多跑一遍仅毫秒级。
+        // 此前用"按已处理均值外推 + 中途 setTotal 修正"替代预统计，但剪枝
+        // 密度前疏后密时外推值会低于最终实际数，total 被中途改小后，后续
+        // 实际计数超过它，进度会冲破 100%。预统计后 total 恒不小于实际
+        // 计数，进度全程单调有界
+        let totalTasks = 0;
+
+        for (const itemA of arrayA) {
+            for (const itemB of arrayB) {
+                if (!filterFn || filterFn(itemA, itemB)) {
+                    totalTasks++;
+                }
+            }
+        }
+
+        // 校准调用方以全组合粗估构造的进度分母
+        if (onProgress && onProgress.setTotal) {
+            onProgress.setTotal(totalTasks);
+        }
 
         // 流式模式：使用 onResult 回调，不累积结果
         const streamingMode = onResult !== null;
         const results = streamingMode ? null : [];
         const chunkPromises = [];
 
-        // 用于统计实际执行的任务数，以便动态调整进度
+        // 执行遍的实际任务数：filterFn 为纯函数时与 totalTasks 严格相等；
+        // 任务执行带副作用使 filterFn 更严时（如 removeBiddingContent 的
+        // 已命中剪枝）会小于它，结束时以此收口，保证进度收敛到 1
         let actualTasksProcessed = 0;
-        let lastAdjustmentPoint = 0;
-        const adjustmentThreshold = Math.max(totalTasks * 0.1, 100); // 每处理 10% 或至少 100 个任务后检查是否需要调整
 
         // 外层循环：遍历数组 A
-        let arrayAIndex = 0;
         for (const itemA of arrayA) {
-            arrayAIndex++;
             // 内层循环：遍历数组 B
             for (const itemB of arrayB) {
                 // 如果有过滤函数且不满足条件，跳过
@@ -105,23 +116,6 @@ class SmartChunkProcessor {
                 // 当积累到 chunkSize 个任务时，处理这批任务
                 if (chunkPromises.length >= chunkSize) {
                     await this._processChunk(chunkPromises, streamingMode, results, onResult, onProgress);
-
-                    // 检查是否需要动态调整总数
-                    if (autoAdjustTotal && onProgress && onProgress.setTotal) {
-                        const tasksSinceLastCheck = actualTasksProcessed - lastAdjustmentPoint;
-                        if (tasksSinceLastCheck >= adjustmentThreshold) {
-                            // 基于已处理的 arrayA 元素推算实际总数
-                            const avgTasksPerA = actualTasksProcessed / arrayAIndex;
-                            const projectedTotal = Math.round(avgTasksPerA * arrayA.length);
-
-                            // 如果推算值与预估值偏差超过 20%，则调整
-                            if (Math.abs(projectedTotal - totalTasks) / totalTasks > 0.2) {
-                                onProgress.setTotal(projectedTotal);
-                            }
-
-                            lastAdjustmentPoint = actualTasksProcessed;
-                        }
-                    }
                 }
             }
         }
@@ -131,8 +125,9 @@ class SmartChunkProcessor {
             await this._processChunk(chunkPromises, streamingMode, results, onResult, onProgress);
         }
 
-        // 最终修正：用实际执行的总数更新进度
-        if (autoAdjustTotal && onProgress && onProgress.setTotal && actualTasksProcessed !== totalTasks) {
+        // 最终收口：执行遍与预统计不一致时（任务副作用导致的额外剪枝），
+        // 用实际执行数修正分母，使进度精确收敛到 1
+        if (onProgress && onProgress.setTotal && actualTasksProcessed !== totalTasks) {
             onProgress.setTotal(actualTasksProcessed);
         }
 
