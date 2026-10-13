@@ -112,8 +112,8 @@ test('2.4 调用 setLogCustomHandler', () => {
 });
 
 test('2.5 调用 setPreloadProgressHandler', () => {
-    BidComparator.setPreloadProgressHandler(function (num, str) {
-        // 预加载进度处理
+    BidComparator.setPreloadProgressHandler(function (info) {
+        // 预加载进度处理（参数为单对象：filePath/progress/remain 等）
     });
 });
 

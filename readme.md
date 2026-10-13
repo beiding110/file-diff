@@ -146,9 +146,11 @@ BidComparator.updateSettings({
     workers: 'multi', // 'single' 时为单线程对比，默认 'multi'
 });
 
-// 解析进度回调（可选）
-BidComparator.setPreloadProgressHandler((filePath, num, str) => {
-    console.log('解析进度', filePath, num, str);
+// 解析进度回调（可选）。参数为单对象：
+// 明细（分片粒度）：filePath、shard（分片号）、shards（分片数）、done（本片完成页数）、numPages（总页数）
+// 聚合值：doneAll（全局完成页数）、progress（全局进度，4 位小数）、remain（剩余时间估算，如 "1分30秒"）
+BidComparator.setPreloadProgressHandler(({ filePath, progress, remain }) => {
+    console.log('解析进度', filePath, progress, remain);
 });
 
 (async () => {

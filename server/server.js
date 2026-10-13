@@ -117,11 +117,12 @@ async function runCompare(task) {
     });
 
     // PDF 解析进度（静态全局回调，串行任务下逐次重设）
-    BidComparator.setPreloadProgressHandler((filePath, num) => {
+    // 回调参数为单对象：progress 为全局进度（4 位小数字符串），remain 为剩余时间估算
+    BidComparator.setPreloadProgressHandler((info) => {
         manager.setProgress(task.id, {
             phase: 'parsing',
-            parseFile: path.basename(filePath || ''),
-            parseProgress: parseFloat(num) || 0,
+            parseFile: path.basename(info.filePath || ''),
+            parseProgress: parseFloat(info.progress) || 0,
         });
     });
 
