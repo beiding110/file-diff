@@ -6,6 +6,9 @@ const REG_PUNCTUATION = require('./punctuation.js'); // 不可能在实体中出
 
 const GENERIC_ROLE_PREFIX = require('./genericRoles.js'); // 角色泛称词表：以此开头的产出是残片
 
+// 词面仲裁表（触发词整词桶，见 blacklist.js <type>TriggerWords 约定）
+const BLACKLIST = require('./blacklist.js');
+
 // 定义实体指示词 和 标签集合
 const ENTITY_INDICATORS = require('./indicators.js');
 
@@ -326,6 +329,13 @@ class EntityExtracter {
         const triggerMember = [...buffer].reverse().find(({ word: w }) => indicatorWord.test(w));
 
         if (!triggerMember) {
+            return;
+        }
+
+        // 触发词整词命中词面仲裁表（「短路」之于道路后缀「路」）时，该收尾不是本类
+        // 实体的构词成分，整体拒绝。词面正则按 <type>TriggerWords 约定存放于 blacklist.js，
+        // 只查收尾触发词：中位触发（「短路试验室」的短路）是合法内嵌成分
+        if (BLACKLIST[`${type}TriggerWords`]?.has(triggerMember.word)) {
             return;
         }
 
